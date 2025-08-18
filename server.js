@@ -22,6 +22,8 @@ const {
   WAYL_API_BASE = "https://api.thewayl.com",
   DEFAULT_CURRENCY = "USD",
   BASE_URL = "http://localhost:3000",
+  AUTO_REDIRECT = "false",
+  REDIRECT_DELAY = "3000",
 } = process.env;
 
 // ==================== CONSTANTS ====================
@@ -139,6 +141,8 @@ app.get("/health", (req, res) => {
     conversion_rate: USD_TO_IQD_RATE,
     node_version: process.version,
     base_url: BASE_URL,
+    auto_redirect: AUTO_REDIRECT,
+    redirect_delay: REDIRECT_DELAY,
   });
 });
 
@@ -344,6 +348,201 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
 
       console.log(`✅ تم حفظ بيانات الدفع في Shopify للطلب ${orderName}`);
 
+      // ✅ التحقق من header للتوجيه التلقائي أو إذا كان AUTO_REDIRECT مفعل
+      const shouldRedirect = req.headers['x-shopify-topic'] || 
+                           req.query.redirect === 'true' || 
+                           AUTO_REDIRECT === 'true';
+
+      if (shouldRedirect) {
+        console.log(`🔄 إرسال صفحة توجيه HTML للطلب ${orderName}`);
+        // إرجاع HTML مع توجيه فوري
+        return res.status(200).send(`
+          <!DOCTYPE html>
+          <html lang="ar" dir="rtl">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>تحويل للدفع - ${orderName}</title>
+            <style>
+              * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+              }
+              body { 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Cairo', sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                direction: rtl;
+              }
+              .container {
+                background: rgba(255, 255, 255, 0.1);
+                backdrop-filter: blur(10px);
+                border-radius: 20px;
+                padding: 40px;
+                text-align: center;
+                max-width: 450px;
+                width: 90%;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+                border: 1px solid rgba(255,255,255,0.2);
+              }
+              .emoji {
+                font-size: 3rem;
+                margin-bottom: 20px;
+                animation: bounce 2s infinite;
+              }
+              h2 {
+                font-size: 1.5rem;
+                margin-bottom: 20px;
+                font-weight: 600;
+              }
+              .order-info {
+                background: rgba(255,255,255,0.1);
+                padding: 15px;
+                border-radius: 10px;
+                margin: 20px 0;
+                border: 1px solid rgba(255,255,255,0.2);
+              }
+              .loader { 
+                margin: 20px auto; 
+                border: 4px solid rgba(255,255,255,0.3); 
+                border-top: 4px solid #fff; 
+                border-radius: 50%; 
+                width: 50px; 
+                height: 50px; 
+                animation: spin 1s linear infinite; 
+              }
+              .countdown {
+                font-size: 2rem;
+                font-weight: bold;
+                color: #FFD700;
+                margin: 10px 0;
+              }
+              .btn {
+                background: linear-gradient(45deg, #4CAF50, #45a049);
+                color: white;
+                border: none;
+                padding: 15px 30px;
+                border-radius: 10px;
+                cursor: pointer;
+                font-size: 16px;
+                font-weight: 600;
+                margin-top: 20px;
+                text-decoration: none;
+                display: inline-block;
+                transition: all 0.3s ease;
+                box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+              }
+              .btn:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
+              }
+              @keyframes spin { 
+                0% { transform: rotate(0deg); } 
+                100% { transform: rotate(360deg); } 
+              }
+              @keyframes bounce {
+                0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+                40% { transform: translateY(-10px); }
+                60% { transform: translateY(-5px); }
+              }
+              .progress-bar {
+                width: 100%;
+                height: 4px;
+                background: rgba(255,255,255,0.3);
+                border-radius: 2px;
+                margin: 20px 0;
+                overflow: hidden;
+              }
+              .progress-fill {
+                height: 100%;
+                background: linear-gradient(90deg, #4CAF50, #FFD700);
+                border-radius: 2px;
+                width: 0%;
+                animation: progress ${REDIRECT_DELAY}ms linear forwards;
+              }
+              @keyframes progress {
+                from { width: 0%; }
+                to { width: 100%; }
+              }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="emoji">💳</div>
+              <h2>جاري تحويلك لإكمال الدفع</h2>
+              
+              <div class="order-info">
+                <strong>📋 طلب رقم:</strong> ${orderName}<br>
+                <strong>💰 المبلغ:</strong> ${totalAmount} ${currency}
+              </div>
+              
+              <div class="loader"></div>
+              
+              <div class="progress-bar">
+                <div class="progress-fill"></div>
+              </div>
+              
+              <p>سيتم التحويل خلال: <span class="countdown" id="countdown">3</span> ثانية</p>
+              
+              <a href="${payUrl}" class="btn" onclick="redirectNow()">
+                🚀 اذهب للدفع الآن
+              </a>
+              
+              <p style="font-size: 0.9rem; margin-top: 20px; opacity: 0.8;">
+                💡 إذا لم يتم التحويل تلقائياً، اضغط الزر أعلاه
+              </p>
+            </div>
+            
+            <script>
+              let timeLeft = 3;
+              const countdownElement = document.getElementById('countdown');
+              const paymentUrl = "${payUrl}";
+              
+              function updateCountdown() {
+                countdownElement.textContent = timeLeft;
+                if (timeLeft <= 0) {
+                  redirectNow();
+                  return;
+                }
+                timeLeft--;
+                setTimeout(updateCountdown, 1000);
+              }
+              
+              function redirectNow() {
+                window.location.href = paymentUrl;
+              }
+              
+              // بدء العد التنازلي
+              updateCountdown();
+              
+              // توجيه فوري بعد المدة المحددة
+              setTimeout(redirectNow, ${REDIRECT_DELAY});
+              
+              // توجيه عند الضغط على أي مكان في الصفحة
+              document.addEventListener('click', function(e) {
+                if (e.target.tagName !== 'A') {
+                  redirectNow();
+                }
+              });
+              
+              // توجيه عند الضغط على مفتاح Enter أو Space
+              document.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  redirectNow();
+                }
+              });
+            </script>
+          </body>
+          </html>
+        `);
+      }
+
+      // إرجاع JSON عادي إذا لم يكن هناك حاجة للتوجيه
       res.status(200).json({
         success: true,
         message: `تم إنشاء رابط الدفع للطلب ${orderName}`,
@@ -401,6 +600,7 @@ app.get("/orders/:orderId/pay", async (req, res) => {
       query GetWaylLinks($id: ID!) {
         order(id: $id) {
           id
+          name
           payUrlBase: metafield(namespace: "wayl", key: "pay_url_base") { value }
           payUrl: metafield(namespace: "wayl", key: "pay_url") { value }
           display: metafield(namespace: "wayl", key: "display_settings") { value }
@@ -426,10 +626,41 @@ app.get("/orders/:orderId/pay", async (req, res) => {
     }
 
     const finalUrl = buildWaylUrl(base, effSettings);
+    console.log(`🔗 تحويل الطلب ${order?.name || orderId} إلى WAYL: ${finalUrl}`);
     return res.redirect(finalUrl);
   } catch (e) {
     console.error("Error redirecting order to WAYL:", e);
     res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// حل بديل للتوجيه المباشر
+app.get('/redirect-to-payment/:orderId', async (req, res) => {
+  try {
+    const orderId = req.params.orderId;
+    const orderGID = `gid://shopify/Order/${orderId}`;
+    
+    const query = `
+      query GetPaymentUrl($id: ID!) {
+        order(id: $id) {
+          name
+          payUrl: metafield(namespace: "wayl", key: "pay_url") { value }
+        }
+      }
+    `;
+    
+    const data = await shopifyGraphQL(query, { id: orderGID });
+    const payUrl = data?.order?.payUrl?.value;
+    
+    if (payUrl) {
+      console.log(`🚀 توجيه مباشر للطلب ${data.order.name}: ${payUrl}`);
+      return res.redirect(payUrl);
+    }
+    
+    res.status(404).send('Payment link not found');
+  } catch (e) {
+    console.error("Error in redirect-to-payment:", e);
+    res.status(500).send('Error: ' + e.message);
   }
 });
 
@@ -513,4 +744,6 @@ app.listen(PORT, () => {
   console.log(`🛍️ Shopify: ${SHOPIFY_STORE_DOMAIN}`);
   console.log(`💳 WAYL API: ${WAYL_API_BASE}`);
   console.log(`💱 1 USD = ${USD_TO_IQD_RATE} IQD`);
+  console.log(`🔄 AUTO_REDIRECT: ${AUTO_REDIRECT}`);
+  console.log(`⏱️ REDIRECT_DELAY: ${REDIRECT_DELAY}ms`);
 });
