@@ -664,6 +664,209 @@ app.get('/redirect-to-payment/:orderId', async (req, res) => {
   }
 });
 
+// 🚀 ROUTE الجديد: الدفع العام - يبحث عن آخر طلب معلق
+app.get('/pay', async (req, res) => {
+    try {
+        console.log('🔍 طلب دفع عام - البحث عن آخر طلب معلق...');
+        
+        // البحث عن آخر 5 طلبات معلقة
+        const query = `
+            query GetRecentPendingOrders {
+                orders(first: 5, query: "financial_status:pending", sortKey: CREATED_AT, reverse: true) {
+                    edges {
+                        node {
+                            id
+                            name
+                            totalPriceSet { shopMoney { amount currencyCode } }
+                            customer { firstName lastName email }
+                            createdAt
+                            payUrl: metafield(namespace: "wayl", key: "pay_url") { value }
+                        }
+                    }
+                }
+            }
+        `;
+        
+        const data = await shopifyGraphQL(query);
+        const orders = data?.orders?.edges || [];
+        
+        if (orders.length === 0) {
+            return res.send(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <title>No Pending Orders</title>
+                    <style>
+                        body { 
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+                            text-align: center; padding: 50px;
+                            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+                            min-height: 100vh; display: flex; align-items: center; justify-content: center;
+                        }
+                        .container { 
+                            background: white; padding: 40px; border-radius: 15px; 
+                            box-shadow: 0 10px 30px rgba(0,0,0,0.1); max-width: 500px;
+                        }
+                        .btn { 
+                            background: #4CAF50; color: white; padding: 12px 24px; 
+                            text-decoration: none; border-radius: 8px; 
+                            display: inline-block; margin-top: 20px; font-weight: 600;
+                        }
+                        .emoji { font-size: 3rem; margin-bottom: 20px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="emoji">❌</div>
+                        <h2>لا توجد طلبات معلقة للدفع</h2>
+                        <p>جميع طلباتك مكتملة الدفع أو لا توجد طلبات حديثة تحتاج دفع</p>
+                        <a href="https://${SHOPIFY_STORE_DOMAIN}" class="btn">العودة للمتجر</a>
+                    </div>
+                </body>
+                </html>
+            `);
+        }
+        
+        // استخدام آخر طلب
+        const latestOrder = orders[0].node;
+        const orderId = latestOrder.id.split('/').pop();
+        
+        console.log(`✅ تم العثور على طلب معلق: ${latestOrder.name} (ID: ${orderId})`);
+        
+        // إذا كان هناك رابط دفع محفوظ، استخدمه
+        if (latestOrder.payUrl) {
+            console.log('🔗 استخدام رابط WAYL المحفوظ');
+            return res.redirect(latestOrder.payUrl);
+        }
+        
+        // إنشاء رابط دفع جديد
+        const totalUSD = parseFloat(latestOrder.totalPriceSet.shopMoney.amount);
+        const totalIQD = Math.round(totalUSD * USD_TO_IQD_RATE); // تحويل للدينار العراقي
+        
+        const referenceId = `SHOPIFY-${orderId}-${Date.now()}`;
+        const webhookSecret = crypto.randomBytes(32).toString('hex');
+        
+        const paymentData = {
+            referenceId: referenceId,
+            total: totalIQD,
+            currency: 'IQD',
+            lineItem: [{
+                label: `Order ${latestOrder.name}`,
+                amount: totalIQD,
+                type: 'increase',
+                image: 'https://via.placeholder.com/150/4CAF50/ffffff?text=Order'
+            }],
+            webhookUrl: `${BASE_URL}/webhooks/wayl/payment`,
+            webhookSecret: webhookSecret,
+            redirectionUrl: `https://${SHOPIFY_STORE_DOMAIN}/account/orders`
+        };
+        
+        console.log('📤 إنشاء رابط دفع WAYL جديد...');
+        console.log('💰 المبلغ:', `${totalUSD} USD = ${totalIQD} IQD`);
+        
+        const waylResponse = await fetch(`${WAYL_API_BASE}/api/v1/links`, {
+            method: 'POST',
+            headers: {
+                'X-WAYL-AUTHENTICATION': WAYL_API_KEY,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(paymentData)
+        });
+        
+        if (!waylResponse.ok) {
+            const errorText = await waylResponse.text();
+            throw new Error(`WAYL API Error ${waylResponse.status}: ${errorText}`);
+        }
+        
+        const waylData = await waylResponse.json();
+        const payUrl = waylData.data.url;
+        
+        console.log('✅ تم إنشاء رابط WAYL بنجاح:', payUrl);
+        
+        // حفظ رابط الدفع في Shopify للاستخدام المستقبلي
+        try {
+            await shopifyGraphQL(`
+                mutation SavePayUrl($id: ID!, $value: String!) {
+                    metafieldsSet(metafields: [{
+                        ownerId: $id,
+                        namespace: "wayl",
+                        key: "pay_url",
+                        value: $value,
+                        type: "single_line_text_field"
+                    }]) {
+                        metafields { id }
+                        userErrors { field message }
+                    }
+                }
+            `, { id: latestOrder.id, value: payUrl });
+            
+            console.log('💾 تم حفظ رابط الدفع في Shopify');
+        } catch (saveError) {
+            console.error('⚠️ خطأ في حفظ رابط الدفع:', saveError.message);
+            // لا نوقف العملية، فقط نسجل الخطأ
+        }
+        
+        // توجيه المستخدم لـ WAYL
+        res.redirect(payUrl);
+        
+    } catch (error) {
+        console.error('❌ خطأ في /pay:', error);
+        
+        res.status(500).send(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>Payment Error</title>
+                <style>
+                    body { 
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+                        text-align: center; padding: 50px;
+                        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+                        min-height: 100vh; display: flex; align-items: center; justify-content: center;
+                        color: white;
+                    }
+                    .container { 
+                        background: rgba(255,255,255,0.1); padding: 40px; border-radius: 15px; 
+                        backdrop-filter: blur(10px); max-width: 500px;
+                    }
+                    .btn { 
+                        background: white; color: #333; padding: 12px 24px; text-decoration: none; 
+                        border-radius: 8px; display: inline-block; margin-top: 20px; font-weight: 600;
+                    }
+                    details { margin-top: 20px; text-align: left; }
+                    pre { 
+                        background: rgba(0,0,0,0.3); padding: 10px; border-radius: 5px; 
+                        font-size: 12px; white-space: pre-wrap; word-wrap: break-word;
+                    }
+                    .emoji { font-size: 3rem; margin-bottom: 20px; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="emoji">❌</div>
+                    <h2>خطأ في معالجة الدفع</h2>
+                    <p>نعتذر، حدث خطأ أثناء محاولة إنشاء رابط الدفع</p>
+                    <details>
+                        <summary>تفاصيل الخطأ (للدعم الفني)</summary>
+                        <pre>${error.message}</pre>
+                    </details>
+                    <a href="https://${SHOPIFY_STORE_DOMAIN}" class="btn">العودة للمتجر</a>
+                    <br><br>
+                    <small>إذا استمرت المشكلة، تواصل مع الدعم الفني</small>
+                </div>
+            </body>
+            </html>
+        `);
+    }
+});
+
+// Route مرادف للدفع
+app.get('/payment', (req, res) => {
+    res.redirect('/pay');
+});
+
 // Webhook من WAYL لإكمال الدفع
 app.post("/webhooks/wayl/payment", async (req, res) => {
   try {
@@ -736,6 +939,8 @@ app.post("/webhooks/wayl/payment", async (req, res) => {
   }
 });
 
+console.log('🚀 تم إضافة route الدفع البسيط: /pay');
+
 // ==================== START ====================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
@@ -746,4 +951,5 @@ app.listen(PORT, () => {
   console.log(`💱 1 USD = ${USD_TO_IQD_RATE} IQD`);
   console.log(`🔄 AUTO_REDIRECT: ${AUTO_REDIRECT}`);
   console.log(`⏱️ REDIRECT_DELAY: ${REDIRECT_DELAY}ms`);
+  console.log(`💰 Payment Route: ${BASE_URL}/pay`);
 });
