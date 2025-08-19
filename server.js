@@ -66,20 +66,50 @@ function detectCustomerCountry(req) {
   return "IQ";
 }
 
-// إعدادات العرض حسب البلد
+// إعدادات العرض حسب البلد - محدث لجميع الدول العربية
 function getDisplaySettings(country) {
-  const settings = {
-    US: { language: "en", currency: "usd", displayCurrency: "USD" },
-    GB: { language: "en", currency: "usd", displayCurrency: "USD" },
-    CA: { language: "en", currency: "usd", displayCurrency: "USD" },
-    AU: { language: "en", currency: "usd", displayCurrency: "USD" },
-    DE: { language: "en", currency: "usd", displayCurrency: "USD" },
-    FR: { language: "en", currency: "usd", displayCurrency: "USD" },
-    IQ: { language: "ar", currency: "iqd", displayCurrency: "IQD" },
-    SA: { language: "ar", currency: "iqd", displayCurrency: "IQD" },
-    AE: { language: "ar", currency: "iqd", displayCurrency: "IQD" },
+  // قائمة الدول العربية الـ 22
+  const arabicCountries = [
+    'IQ', // العراق
+    'SA', // السعودية
+    'AE', // الإمارات
+    'KW', // الكويت
+    'QA', // قطر
+    'BH', // البحرين
+    'OM', // عُمان
+    'YE', // اليمن
+    'SY', // سوريا
+    'LB', // لبنان
+    'JO', // الأردن
+    'PS', // فلسطين
+    'EG', // مصر
+    'LY', // ليبيا
+    'TN', // تونس
+    'DZ', // الجزائر
+    'MA', // المغرب
+    'MR', // موريتانيا
+    'SD', // السودان
+    'SS', // جنوب السودان
+    'SO', // الصومال
+    'DJ', // جيبوتي
+    'KM'  // جزر القمر
+  ];
+
+  // إعدادات للدول العربية: عربي + دولار للعرض
+  if (arabicCountries.includes(country)) {
+    return {
+      language: "ar",
+      currency: "usd",
+      displayCurrency: "USD"
+    };
+  }
+
+  // إعدادات لباقي الدول: إنجليزي + دولار للعرض
+  return {
+    language: "en",
+    currency: "usd",
+    displayCurrency: "USD"
   };
-  return settings[country] || settings.US;
 }
 
 // تحويل المبلغ إلى دينار عراقي للدفع
@@ -113,13 +143,32 @@ async function shopifyGraphQL(query, variables = {}) {
   return data.data;
 }
 
-// يبني رابط WAYL بإضافة lang/currency
+// يبني رابط WAYL بإضافة lang/currency - محدث لإصلاح رموز URL
 function buildWaylUrl(baseUrl, { language, currency }) {
   if (!baseUrl) return null;
-  const u = new URL(baseUrl);
-  if (!u.searchParams.get("lang")) u.searchParams.set("lang", language);
-  if (!u.searchParams.get("currency")) u.searchParams.set("currency", currency);
-  return u.toString();
+  
+  try {
+    const u = new URL(baseUrl);
+    
+    // إضافة المعاملات إذا لم تكن موجودة
+    if (!u.searchParams.get("lang")) {
+      u.searchParams.set("lang", language);
+    }
+    if (!u.searchParams.get("currency")) {
+      u.searchParams.set("currency", currency);
+    }
+    
+    // التأكد من أن الرابط صحيح
+    const finalUrl = u.toString();
+    console.log(`🔗 بناء رابط WAYL: ${baseUrl} → ${finalUrl}`);
+    
+    return finalUrl;
+  } catch (error) {
+    console.error("خطأ في بناء رابط WAYL:", error);
+    // في حالة الخطأ، أضف المعاملات بطريقة بسيطة
+    const separator = baseUrl.includes('?') ? '&' : '?';
+    return `${baseUrl}${separator}lang=${language}&currency=${currency}`;
+  }
 }
 
 // ==================== ROUTES ====================
@@ -143,6 +192,7 @@ app.get("/health", (req, res) => {
     base_url: BASE_URL,
     auto_redirect: AUTO_REDIRECT,
     redirect_delay: REDIRECT_DELAY,
+    arabic_countries_supported: 22,
   });
 });
 
@@ -192,9 +242,12 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
     console.log(`طلب رقم: ${orderName}`);
     console.log(`💰 المبلغ الأصلي: ${totalAmount} ${currency}`);
 
-    // افتراضي إنجليزي/دولار للواجهات الدولية
-    const displaySettings = getDisplaySettings("US");
-    console.log(`🌍 إعدادات العرض: ${displaySettings.language}, ${displaySettings.currency}`);
+    // تحديد إعدادات العرض حسب دولة العميل (من IP أو بيانات الطلب)
+    const customerCountry = order.shipping_address?.country_code || 
+                           order.billing_address?.country_code || 
+                           detectCustomerCountry(req);
+    const displaySettings = getDisplaySettings(customerCountry);
+    console.log(`🌍 الدولة المكتشفة: ${customerCountry} | إعدادات العرض: ${displaySettings.language}, ${displaySettings.currency}`);
 
     // بناء line items
     const lineItems = [];
@@ -298,7 +351,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
       let payUrl = waylResponse.data.url; // base
       const waylLinkId = waylResponse.data.id;
 
-      // أضف lang/currency للعرض (للزائر الدولي)
+      // أضف lang/currency للعرض حسب دولة العميل
       payUrl = buildWaylUrl(payUrl, displaySettings);
       console.log(`✅ تم إنشاء رابط WAYL: ${payUrl}`);
 
@@ -320,6 +373,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
         { ownerId: orderGID, namespace: "wayl", key: "display_amount", type: "single_line_text_field", value: `${totalAmount} ${currency}` },
         { ownerId: orderGID, namespace: "wayl", key: "payment_amount", type: "single_line_text_field", value: `${totalInIQD} IQD` },
         { ownerId: orderGID, namespace: "wayl", key: "display_settings", type: "single_line_text_field", value: JSON.stringify(displaySettings) },
+        { ownerId: orderGID, namespace: "wayl", key: "customer_country", type: "single_line_text_field", value: customerCountry },
       ];
 
       await shopifyGraphQL(metafieldsMutation, { metafields });
@@ -340,7 +394,8 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
         `📋 Reference: ${referenceId}\n` +
         `💰 Display: ${totalAmount} ${currency}\n` +
         `💰 Payment: ${totalInIQD} IQD\n` +
-        `🌍 Language: ${displaySettings.language}\n` +
+        `🌍 Country: ${customerCountry}\n` +
+        `🗣️ Language: ${displaySettings.language}\n` +
         `💱 Currency Display: ${displaySettings.currency}\n` +
         `📊 Status: Pending Payment`;
 
@@ -355,14 +410,28 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
 
       if (shouldRedirect) {
         console.log(`🔄 إرسال صفحة توجيه HTML للطلب ${orderName}`);
+        
+        // تحديد النص حسب اللغة
+        const isArabic = displaySettings.language === 'ar';
+        const redirectText = {
+          title: isArabic ? `تحويل للدفع - ${orderName}` : `Redirecting to Payment - ${orderName}`,
+          heading: isArabic ? 'جاري تحويلك لإكمال الدفع' : 'Redirecting you to complete payment',
+          orderLabel: isArabic ? 'طلب رقم:' : 'Order:',
+          amountLabel: isArabic ? 'المبلغ:' : 'Amount:',
+          countdownText: isArabic ? 'سيتم التحويل خلال:' : 'Redirecting in:',
+          secondText: isArabic ? 'ثانية' : 'seconds',
+          buttonText: isArabic ? '🚀 اذهب للدفع الآن' : '🚀 Go to Payment Now',
+          noteText: isArabic ? '💡 إذا لم يتم التحويل تلقائياً، اضغط الزر أعلاه' : '💡 If redirect fails, click the button above'
+        };
+        
         // إرجاع HTML مع توجيه فوري
         return res.status(200).send(`
           <!DOCTYPE html>
-          <html lang="ar" dir="rtl">
+          <html lang="${displaySettings.language}" dir="${isArabic ? 'rtl' : 'ltr'}">
           <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>تحويل للدفع - ${orderName}</title>
+            <title>${redirectText.title}</title>
             <style>
               * {
                 margin: 0;
@@ -377,7 +446,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                direction: rtl;
+                direction: ${isArabic ? 'rtl' : 'ltr'};
               }
               .container {
                 background: rgba(255, 255, 255, 0.1);
@@ -474,11 +543,11 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
           <body>
             <div class="container">
               <div class="emoji">💳</div>
-              <h2>جاري تحويلك لإكمال الدفع</h2>
+              <h2>${redirectText.heading}</h2>
               
               <div class="order-info">
-                <strong>📋 طلب رقم:</strong> ${orderName}<br>
-                <strong>💰 المبلغ:</strong> ${totalAmount} ${currency}
+                <strong>📋 ${redirectText.orderLabel}</strong> ${orderName}<br>
+                <strong>💰 ${redirectText.amountLabel}</strong> $${totalAmount}
               </div>
               
               <div class="loader"></div>
@@ -487,14 +556,14 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
                 <div class="progress-fill"></div>
               </div>
               
-              <p>سيتم التحويل خلال: <span class="countdown" id="countdown">3</span> ثانية</p>
+              <p>${redirectText.countdownText} <span class="countdown" id="countdown">3</span> ${redirectText.secondText}</p>
               
               <a href="${payUrl}" class="btn" onclick="redirectNow()">
-                🚀 اذهب للدفع الآن
+                ${redirectText.buttonText}
               </a>
               
               <p style="font-size: 0.9rem; margin-top: 20px; opacity: 0.8;">
-                💡 إذا لم يتم التحويل تلقائياً، اضغط الزر أعلاه
+                ${redirectText.noteText}
               </p>
             </div>
             
@@ -553,6 +622,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
         display_amount: `${totalAmount} ${currency}`,
         payment_amount: `${totalInIQD} IQD`,
         display_settings: displaySettings,
+        customer_country: customerCountry,
         conversion_rate: USD_TO_IQD_RATE,
       });
     } catch (waylError) {
@@ -580,6 +650,7 @@ app.get("/pay/:referenceId", (req, res) => {
     const baseUrl = req.query.base_url || `https://link.thewayl.com/pay?id=${referenceId}`;
     const finalUrl = buildWaylUrl(baseUrl, settings);
 
+    console.log(`🔗 توجيه دفع مخصص: ${referenceId} → ${finalUrl}`);
     return res.redirect(finalUrl);
   } catch (e) {
     console.error("Error creating custom payment link:", e);
@@ -604,6 +675,7 @@ app.get("/orders/:orderId/pay", async (req, res) => {
           payUrlBase: metafield(namespace: "wayl", key: "pay_url_base") { value }
           payUrl: metafield(namespace: "wayl", key: "pay_url") { value }
           display: metafield(namespace: "wayl", key: "display_settings") { value }
+          savedCountry: metafield(namespace: "wayl", key: "customer_country") { value }
         }
       }
     `;
@@ -616,17 +688,27 @@ app.get("/orders/:orderId/pay", async (req, res) => {
       return res.status(404).json({ ok: false, message: "لم يتم العثور على رابط WAYL لهذا الطلب." });
     }
 
-    // إذا موجود display_settings محفوظ، استخدمه للعرض
-    let effSettings = settings;
+    // استخدم الدولة المحفوظة أولاً، ثم المكتشفة
+    const effectiveCountry = order?.savedCountry?.value || country;
+    let effSettings = getDisplaySettings(effectiveCountry);
+    
+    // إذا موجود display_settings محفوظ، استخدمه
     if (order?.display?.value) {
       try {
         const saved = JSON.parse(order.display.value);
-        effSettings = { language: saved.language || settings.language, currency: saved.currency || settings.currency };
-      } catch (_) {}
+        effSettings = { 
+          language: saved.language || effSettings.language, 
+          currency: saved.currency || effSettings.currency 
+        };
+      } catch (_) {
+        console.warn("فشل في قراءة إعدادات العرض المحفوظة");
+      }
     }
 
     const finalUrl = buildWaylUrl(base, effSettings);
     console.log(`🔗 تحويل الطلب ${order?.name || orderId} إلى WAYL: ${finalUrl}`);
+    console.log(`🌍 الدولة الفعالة: ${effectiveCountry} | الإعدادات: ${JSON.stringify(effSettings)}`);
+    
     return res.redirect(finalUrl);
   } catch (e) {
     console.error("Error redirecting order to WAYL:", e);
@@ -664,12 +746,12 @@ app.get('/redirect-to-payment/:orderId', async (req, res) => {
   }
 });
 
-// 🚀 ROUTE الجديد: الدفع العام - يبحث عن آخر طلب معلق
+// 🚀 ROUTE الجديد: الدفع العام - يبحث عن آخر طلب معلق (محدث بدون customer field)
 app.get('/pay', async (req, res) => {
     try {
         console.log('🔍 طلب دفع عام - البحث عن آخر طلب معلق...');
         
-        // البحث عن آخر 5 طلبات معلقة
+        // البحث عن آخر 5 طلبات معلقة - بدون customer field لتجنب خطأ الصلاحيات
         const query = `
             query GetRecentPendingOrders {
                 orders(first: 5, query: "financial_status:pending", sortKey: CREATED_AT, reverse: true) {
@@ -678,9 +760,11 @@ app.get('/pay', async (req, res) => {
                             id
                             name
                             totalPriceSet { shopMoney { amount currencyCode } }
-                            customer { firstName lastName email }
                             createdAt
                             payUrl: metafield(namespace: "wayl", key: "pay_url") { value }
+                            payUrlBase: metafield(namespace: "wayl", key: "pay_url_base") { value }
+                            savedCountry: metafield(namespace: "wayl", key: "customer_country") { value }
+                            display: metafield(namespace: "wayl", key: "display_settings") { value }
                         }
                     }
                 }
@@ -734,15 +818,41 @@ app.get('/pay', async (req, res) => {
         
         console.log(`✅ تم العثور على طلب معلق: ${latestOrder.name} (ID: ${orderId})`);
         
-        // إذا كان هناك رابط دفع محفوظ، استخدمه
-        if (latestOrder.payUrl) {
-            console.log('🔗 استخدام رابط WAYL المحفوظ');
-            return res.redirect(latestOrder.payUrl);
+        // تحديد الدولة والإعدادات
+        const detectedCountry = detectCustomerCountry(req);
+        const savedCountry = latestOrder.savedCountry?.value;
+        const effectiveCountry = savedCountry || detectedCountry;
+        let settings = getDisplaySettings(effectiveCountry);
+        
+        // استخدام الإعدادات المحفوظة إذا وُجدت
+        if (latestOrder.display?.value) {
+            try {
+                const savedSettings = JSON.parse(latestOrder.display.value);
+                settings = {
+                    language: savedSettings.language || settings.language,
+                    currency: savedSettings.currency || settings.currency
+                };
+            } catch (_) {
+                console.warn("فشل في قراءة الإعدادات المحفوظة، استخدام الافتراضية");
+            }
+        }
+        
+        console.log(`🌍 الدولة الفعالة: ${effectiveCountry} | الإعدادات: ${JSON.stringify(settings)}`);
+        
+        // إذا كان هناك رابط دفع محفوظ، استخدمه مع الإعدادات الصحيحة
+        if (latestOrder.payUrl?.value || latestOrder.payUrlBase?.value) {
+            const baseUrl = latestOrder.payUrlBase?.value || latestOrder.payUrl?.value;
+            const finalUrl = buildWaylUrl(baseUrl, settings);
+            
+            console.log('🔗 استخدام رابط WAYL المحفوظ مع إعدادات محدثة');
+            console.log(`📎 الرابط النهائي: ${finalUrl}`);
+            
+            return res.redirect(finalUrl);
         }
         
         // إنشاء رابط دفع جديد
         const totalUSD = parseFloat(latestOrder.totalPriceSet.shopMoney.amount);
-        const totalIQD = Math.round(totalUSD * USD_TO_IQD_RATE); // تحويل للدينار العراقي
+        const totalIQD = Math.round(totalUSD * USD_TO_IQD_RATE);
         
         const referenceId = `SHOPIFY-${orderId}-${Date.now()}`;
         const webhookSecret = crypto.randomBytes(32).toString('hex');
@@ -780,28 +890,58 @@ app.get('/pay', async (req, res) => {
         }
         
         const waylData = await waylResponse.json();
-        const payUrl = waylData.data.url;
+        let payUrl = waylData.data.url;
+        
+        // إضافة إعدادات العرض
+        payUrl = buildWaylUrl(payUrl, settings);
         
         console.log('✅ تم إنشاء رابط WAYL بنجاح:', payUrl);
         
         // حفظ رابط الدفع في Shopify للاستخدام المستقبلي
         try {
-            await shopifyGraphQL(`
-                mutation SavePayUrl($id: ID!, $value: String!) {
-                    metafieldsSet(metafields: [{
-                        ownerId: $id,
-                        namespace: "wayl",
-                        key: "pay_url",
-                        value: $value,
-                        type: "single_line_text_field"
-                    }]) {
+            const metafieldsMutation = `
+                mutation SavePaymentData($metafields: [MetafieldsSetInput!]!) {
+                    metafieldsSet(metafields: $metafields) {
                         metafields { id }
                         userErrors { field message }
                     }
                 }
-            `, { id: latestOrder.id, value: payUrl });
+            `;
             
-            console.log('💾 تم حفظ رابط الدفع في Shopify');
+            const metafields = [
+                { 
+                    ownerId: latestOrder.id, 
+                    namespace: "wayl", 
+                    key: "pay_url", 
+                    value: payUrl, 
+                    type: "single_line_text_field" 
+                },
+                { 
+                    ownerId: latestOrder.id, 
+                    namespace: "wayl", 
+                    key: "pay_url_base", 
+                    value: waylData.data.url, 
+                    type: "single_line_text_field" 
+                },
+                { 
+                    ownerId: latestOrder.id, 
+                    namespace: "wayl", 
+                    key: "customer_country", 
+                    value: effectiveCountry, 
+                    type: "single_line_text_field" 
+                },
+                { 
+                    ownerId: latestOrder.id, 
+                    namespace: "wayl", 
+                    key: "display_settings", 
+                    value: JSON.stringify(settings), 
+                    type: "single_line_text_field" 
+                }
+            ];
+            
+            await shopifyGraphQL(metafieldsMutation, { metafields });
+            console.log('💾 تم حفظ رابط الدفع والإعدادات في Shopify');
+            
         } catch (saveError) {
             console.error('⚠️ خطأ في حفظ رابط الدفع:', saveError.message);
             // لا نوقف العملية، فقط نسجل الخطأ
@@ -939,7 +1079,7 @@ app.post("/webhooks/wayl/payment", async (req, res) => {
   }
 });
 
-console.log('🚀 تم إضافة route الدفع البسيط: /pay');
+console.log('🚀 تم إضافة route الدفع البسيط مع دعم جميع الدول العربية: /pay');
 
 // ==================== START ====================
 const PORT = process.env.PORT || 3000;
@@ -952,4 +1092,8 @@ app.listen(PORT, () => {
   console.log(`🔄 AUTO_REDIRECT: ${AUTO_REDIRECT}`);
   console.log(`⏱️ REDIRECT_DELAY: ${REDIRECT_DELAY}ms`);
   console.log(`💰 Payment Route: ${BASE_URL}/pay`);
+  console.log(`🌍 Arabic Countries Supported: 22`);
+  console.log(`🗣️ Languages: Arabic (ar) + English (en)`);
+  console.log(`💵 Display Currency: USD for all countries`);
+  console.log(`💰 Payment Currency: IQD (Iraqi Dinar)`);
 });
