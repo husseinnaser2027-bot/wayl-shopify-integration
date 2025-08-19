@@ -1002,9 +1002,30 @@ app.get('/pay', async (req, res) => {
     }
 });
 
-// Route مرادف للدفع
-app.get('/payment', (req, res) => {
-    res.redirect('/pay');
+// Route مرادف للدفع - محدث لدعم order_id 🆕
+app.get('/payment', async (req, res) => {
+    try {
+        const orderId = req.query.order_id;
+        
+        if (orderId) {
+            console.log(`🎯 طلب دفع محدد للطلب: ${orderId}`);
+            
+            // استخراج رقم الطلب من gid
+            const cleanOrderId = orderId.includes('/') ? orderId.split('/').pop() : orderId;
+            
+            // توجيه للطلب المحدد
+            return res.redirect(`/orders/${cleanOrderId}/pay`);
+        }
+        
+        console.log('🔄 طلب دفع عام - توجيه لـ /pay');
+        // إذا لم يكن هناك order_id، استخدم الطريقة العامة
+        res.redirect('/pay');
+        
+    } catch (error) {
+        console.error('خطأ في /payment:', error);
+        // في حالة أي خطأ، استخدم الطريقة العامة كـ fallback
+        res.redirect('/pay');
+    }
 });
 
 // Webhook من WAYL لإكمال الدفع
@@ -1079,7 +1100,7 @@ app.post("/webhooks/wayl/payment", async (req, res) => {
   }
 });
 
-console.log('🚀 تم إضافة route الدفع البسيط مع دعم جميع الدول العربية: /pay');
+console.log('🚀 تم إضافة route الدفع البسيط مع دعم جميع الدول العربية والـ order_id: /payment');
 
 // ==================== START ====================
 const PORT = process.env.PORT || 3000;
@@ -1092,6 +1113,7 @@ app.listen(PORT, () => {
   console.log(`🔄 AUTO_REDIRECT: ${AUTO_REDIRECT}`);
   console.log(`⏱️ REDIRECT_DELAY: ${REDIRECT_DELAY}ms`);
   console.log(`💰 Payment Route: ${BASE_URL}/pay`);
+  console.log(`🎯 Smart Payment Route: ${BASE_URL}/payment?order_id=ORDER_ID`);
   console.log(`🌍 Arabic Countries Supported: 22`);
   console.log(`🗣️ Languages: Arabic (ar) + English (en)`);
   console.log(`💵 Display Currency: USD for all countries`);
