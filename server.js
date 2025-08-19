@@ -171,76 +171,106 @@ function buildWaylUrl(baseUrl, { language, currency }) {
   }
 }
 
-// 🆕 دالة محسنة لاستخراج صور المنتجات
-function extractProductImage(item) {
-  // محاولة استخراج الصورة من مصادر متعددة
-  let productImage = null;
-  
-  console.log(`🖼️ البحث عن صورة للمنتج: ${item.title || 'منتج غير معرف'}`);
-  
-  // المصدر الأول: variant_image_url
-  if (item.variant_image_url) {
-    productImage = item.variant_image_url;
-    console.log(`✅ تم العثور على صورة من variant_image_url: ${productImage}`);
-    return productImage;
+// 🆕 دالة لجلب صور المنتجات من Shopify API مباشرة
+async function fetchProductImageFromShopify(productId, variantId) {
+  try {
+    console.log(`🖼️ جلب صورة المنتج من Shopify - Product ID: ${productId}, Variant ID: ${variantId}`);
+    
+    // بناء GraphQL query لجلب صور المنتج والـ variant
+    const imageQuery = `
+      query GetProductImages($productId: ID!, $variantId: ID) {
+        product(id: $productId) {
+          id
+          title
+          featuredImage {
+            url
+            altText
+          }
+          images(first: 5) {
+            edges {
+              node {
+                url
+                altText
+              }
+            }
+          }
+        }
+        productVariant(id: $variantId) {
+          id
+          image {
+            url
+            altText
+          }
+        }
+      }
+    `;
+    
+    const variables = {
+      productId: `gid://shopify/Product/${productId}`,
+      variantId: variantId ? `gid://shopify/ProductVariant/${variantId}` : null
+    };
+    
+    const data = await shopifyGraphQL(imageQuery, variables);
+    
+    // ترتيب الأولوية: صورة الـ variant أولاً، ثم الصورة المميزة للمنتج، ثم أول صورة
+    
+    // الأولوية الأولى: صورة الـ variant
+    if (data.productVariant?.image?.url) {
+      console.log(`✅ تم العثور على صورة variant من Shopify: ${data.productVariant.image.url}`);
+      return data.productVariant.image.url;
+    }
+    
+    // الأولوية الثانية: الصورة المميزة للمنتج
+    if (data.product?.featuredImage?.url) {
+      console.log(`✅ تم العثور على صورة مميزة من Shopify: ${data.product.featuredImage.url}`);
+      return data.product.featuredImage.url;
+    }
+    
+    // الأولوية الثالثة: أول صورة في معرض الصور
+    if (data.product?.images?.edges?.length > 0) {
+      const firstImage = data.product.images.edges[0].node;
+      console.log(`✅ تم العثور على أول صورة من Shopify: ${firstImage.url}`);
+      return firstImage.url;
+    }
+    
+    console.log(`⚠️ لم يتم العثور على أي صورة في Shopify للمنتج ${productId}`);
+    return null;
+    
+  } catch (error) {
+    console.error(`❌ خطأ في جلب صورة المنتج من Shopify:`, error);
+    return null;
   }
+}
+
+// 🆕 دالة محسنة لاستخراج صور المنتجات مع دعم Shopify API
+async function extractProductImageFromShopify(item) {
+  console.log(`🖼️ معالجة صورة المنتج: ${item.title || 'منتج غير معرف'}`);
   
-  // المصدر الثاني: image_url
-  if (item.image_url) {
-    productImage = item.image_url;
-    console.log(`✅ تم العثور على صورة من image_url: ${productImage}`);
-    return productImage;
-  }
-  
-  // المصدر الثالث: featured_image
-  if (item.featured_image) {
-    productImage = item.featured_image;
-    console.log(`✅ تم العثور على صورة من featured_image: ${productImage}`);
-    return productImage;
-  }
-  
-  // المصدر الرابع: variant.image_url
-  if (item.variant && item.variant.image_url) {
-    productImage = item.variant.image_url;
-    console.log(`✅ تم العثور على صورة من variant.image_url: ${productImage}`);
-    return productImage;
-  }
-  
-  // المصدر الخامس: variant.featured_image
-  if (item.variant && item.variant.featured_image) {
-    productImage = item.variant.featured_image;
-    console.log(`✅ تم العثور على صورة من variant.featured_image: ${productImage}`);
-    return productImage;
-  }
-  
-  // المصدر السادس: product.featured_image
-  if (item.product && item.product.featured_image) {
-    productImage = item.product.featured_image;
-    console.log(`✅ تم العثور على صورة من product.featured_image: ${productImage}`);
-    return productImage;
-  }
-  
-  // المصدر السابع: product.images[0]
-  if (item.product && item.product.images && item.product.images.length > 0) {
-    const firstImage = item.product.images[0];
-    productImage = firstImage.src || firstImage.url || firstImage.original_src;
-    if (productImage) {
-      console.log(`✅ تم العثور على صورة من product.images[0]: ${productImage}`);
-      return productImage;
+  // أولاً: محاولة الحصول على الصورة من Shopify API
+  if (item.product_id) {
+    const shopifyImage = await fetchProductImageFromShopify(item.product_id, item.variant_id);
+    if (shopifyImage) {
+      return shopifyImage;
     }
   }
   
-  // المصدر الثامن: البحث في خصائص أخرى محتملة
-  const possibleImageFields = [
-    'image', 'img', 'picture', 'photo', 'thumbnail', 'thumb',
-    'src', 'url', 'image_src', 'image_url_original', 'original_src'
+  // ثانياً: محاولة استخراج الصورة من بيانات الـ webhook (fallback)
+  const webhookSources = [
+    item.variant_image_url,
+    item.image_url,
+    item.featured_image,
+    item.variant?.image_url,
+    item.variant?.featured_image,
+    item.product?.featured_image,
+    item.product?.images?.[0]?.src,
+    item.product?.images?.[0]?.url,
+    item.product?.images?.[0]?.original_src
   ];
   
-  for (const field of possibleImageFields) {
-    if (item[field] && typeof item[field] === 'string' && item[field].includes('http')) {
-      productImage = item[field];
-      console.log(`✅ تم العثور على صورة من ${field}: ${productImage}`);
-      return productImage;
+  for (const source of webhookSources) {
+    if (source && typeof source === 'string' && source.includes('http')) {
+      console.log(`✅ تم العثور على صورة من webhook data: ${source}`);
+      return source;
     }
   }
   
@@ -327,29 +357,34 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
     const displaySettings = getDisplaySettings(customerCountry);
     console.log(`🌍 الدولة المكتشفة: ${customerCountry} | إعدادات العرض: ${displaySettings.language}, ${displaySettings.currency}`);
 
-    // بناء line items مع استخراج محسن للصور
+    // بناء line items مع استخراج محسن للصور من Shopify API
     const lineItems = [];
     if (order.line_items?.length) {
       console.log(`🛍️ معالجة ${order.line_items.length} عنصر في الطلب...`);
       
-      order.line_items.forEach((item, index) => {
+      // معالجة جميع المنتجات بشكل متوازي لتحسين الأداء
+      const itemPromises = order.line_items.map(async (item, index) => {
         const itemPriceUSD = parseFloat(item.price);
         const itemQuantity = item.quantity;
         const totalItemUSD = itemPriceUSD * itemQuantity;
         const amountInIQD = convertToIQD(totalItemUSD, currency);
 
-        // 🆕 استخدام الدالة المحسنة لاستخراج الصورة
-        const productImage = extractProductImage(item);
+        // 🆕 استخدام الدالة المحسنة للحصول على الصورة من Shopify API
+        const productImage = await extractProductImageFromShopify(item);
         
-        console.log(`📦 العنصر ${index + 1}: ${item.title} - $${totalItemUSD} - صورة: ${productImage ? '✅' : '❌'}`);
+        console.log(`📦 العنصر ${index + 1}: ${item.title} - ${totalItemUSD} - صورة: ${productImage && !productImage.includes('placeholder') ? '✅' : '❌'}`);
 
-        lineItems.push({
+        return {
           label: item.title || "Product",
           amount: amountInIQD,
           type: "increase",
           image: productImage,
-        });
+        };
       });
+      
+      // انتظار جميع الصور
+      const processedItems = await Promise.all(itemPromises);
+      lineItems.push(...processedItems);
     }
 
     // الشحن
@@ -406,7 +441,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
     console.log(`🔗 إنشاء رابط WAYL للطلب ${orderName}...`);
     console.log(`💰 للعرض: ${totalAmount} ${currency}`);
     console.log(`💰 للدفع: ${totalInIQD} IQD`);
-    console.log(`🖼️ عدد العناصر مع الصور: ${lineItems.filter(item => !item.image.includes('placeholder')).length}/${lineItems.length}`);
+    console.log(`🖼️ عدد العناصر مع صور حقيقية: ${lineItems.filter(item => item.image && !item.image.includes('placeholder')).length}/${lineItems.length}`);
 
     const waylPayload = {
       referenceId,
@@ -419,7 +454,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
     };
 
     console.log("📤 إرسال البيانات إلى WAYL:");
-    console.log("📋 المنتجات:", lineItems.map(item => `${item.label} - ${item.image.includes('placeholder') ? 'NO_IMAGE' : 'HAS_IMAGE'}`));
+    console.log("📋 المنتجات:", lineItems.map(item => `${item.label} - ${item.image && !item.image.includes('placeholder') ? 'REAL_IMAGE' : 'PLACEHOLDER'}`));
 
     try {
       const waylRes = await fetch(`${WAYL_API_BASE}/api/v1/links`, {
@@ -487,7 +522,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
         `🌍 Country: ${customerCountry}\n` +
         `🗣️ Language: ${displaySettings.language}\n` +
         `💱 Currency Display: ${displaySettings.currency}\n` +
-        `🖼️ Images Found: ${lineItems.filter(item => !item.image.includes('placeholder')).length}/${lineItems.length}\n` +
+        `🖼️ Real Images: ${lineItems.filter(item => item.image && !item.image.includes('placeholder')).length}/${lineItems.length}\n` +
         `📊 Status: Pending Payment`;
 
       await shopifyGraphQL(noteUpdateMutation, { input: { id: orderGID, note: currentNote + waylNote } });
@@ -715,7 +750,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
         display_settings: displaySettings,
         customer_country: customerCountry,
         conversion_rate: USD_TO_IQD_RATE,
-        images_found: lineItems.filter(item => !item.image.includes('placeholder')).length,
+        real_images_found: lineItems.filter(item => item.image && !item.image.includes('placeholder')).length,
         total_items: lineItems.length,
       });
     } catch (waylError) {
@@ -1194,7 +1229,7 @@ app.post("/webhooks/wayl/payment", async (req, res) => {
 });
 
 console.log('🚀 تم إضافة route الدفع البسيط مع دعم جميع الدول العربية والـ order_id: /payment');
-console.log('🖼️ تم تحسين نظام استخراج صور المنتجات من 8 مصادر مختلفة');
+console.log('🖼️ تم تحسين نظام استخراج صور المنتجات مع دعم Shopify GraphQL API');
 
 // ==================== START ====================
 const PORT = process.env.PORT || 3000;
@@ -1212,5 +1247,5 @@ app.listen(PORT, () => {
   console.log(`🗣️ Languages: Arabic (ar) + English (en)`);
   console.log(`💵 Display Currency: USD for all countries`);
   console.log(`💰 Payment Currency: IQD (Iraqi Dinar)`);
-  console.log(`🖼️ Product Images: Enhanced extraction from 8 sources`);
+  console.log(`🖼️ Product Images: Direct fetch from Shopify GraphQL API`);
 });
