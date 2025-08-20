@@ -7,7 +7,6 @@ dotenv.config();
 
 const app = express();
 
-// إعداد Express للتعامل مع JSON وللاحتفاظ بالـ rawBody للتحقق من HMAC
 app.use(express.json({
   type: "*/*",
   verify: (req, res, buf) => { req.rawBody = buf; }
@@ -29,7 +28,7 @@ const {
 // ==================== CONSTANTS ====================
 const USD_TO_IQD_RATE = 1320;
 
-// قاموس الصور الحقيقية محسن للسرعة
+// صور المنتجات - مبسطة للسرعة
 const REAL_PRODUCT_IMAGES = {
   'hydrocat': 'https://tryhydrocat.com/cdn/shop/files/9c90033b1a407ed93d5c7854445cc20c.png',
   'water fountain': 'https://tryhydrocat.com/cdn/shop/files/9c90033b1a407ed93d5c7854445cc20c.png',
@@ -44,11 +43,9 @@ const REAL_PRODUCT_IMAGES = {
   'shipping': 'https://tryhydrocat.com/cdn/shop/files/free-delivery_d5b4e306-16a1-4d29-85da-859025613537.png'
 };
 
-// صور احتياطية سريعة
 const FALLBACK_IMAGES = [
   'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=300&q=80',
-  'https://images.unsplash.com/photo-1550583724-b2692b85b150?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=300&q=80',
-  'https://images.unsplash.com/photo-1572981779307-38b8cabb2407?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=300&q=80'
+  'https://images.unsplash.com/photo-1550583724-b2692b85b150?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=300&q=80'
 ];
 
 // ==================== HELPERS ====================
@@ -61,11 +58,9 @@ function verifyShopifyWebhook(req) {
       .createHmac("sha256", SHOPIFY_WEBHOOK_SECRET)
       .update(req.rawBody || Buffer.from(JSON.stringify(req.body)), "utf8")
       .digest("base64");
-
     if (Buffer.byteLength(hmacHeader) !== Buffer.byteLength(digest)) return false;
     return crypto.timingSafeEqual(Buffer.from(hmacHeader), Buffer.from(digest));
   } catch (e) {
-    console.error("HMAC verify error:", e);
     return false;
   }
 }
@@ -84,7 +79,6 @@ function getDisplaySettings(country) {
     'IQ', 'SA', 'AE', 'KW', 'QA', 'BH', 'OM', 'YE', 'SY', 'LB', 'JO', 'PS', 
     'EG', 'LY', 'TN', 'DZ', 'MA', 'MR', 'SD', 'SS', 'SO', 'DJ', 'KM'
   ];
-
   if (arabicCountries.includes(country)) {
     return { language: "ar", currency: "usd", displayCurrency: "USD" };
   }
@@ -107,10 +101,8 @@ async function shopifyGraphQL(query, variables = {}) {
     },
     body: JSON.stringify({ query, variables }),
   });
-
   const data = await res.json();
   if (!res.ok || data.errors) {
-    console.error("Shopify GraphQL error:", data);
     throw new Error(JSON.stringify(data));
   }
   return data.data;
@@ -118,7 +110,6 @@ async function shopifyGraphQL(query, variables = {}) {
 
 function buildWaylUrl(baseUrl, { language, currency }) {
   if (!baseUrl) return null;
-  
   try {
     const u = new URL(baseUrl);
     if (!u.searchParams.get("lang")) u.searchParams.set("lang", language);
@@ -130,11 +121,11 @@ function buildWaylUrl(baseUrl, { language, currency }) {
   }
 }
 
-// دالة محسنة للسرعة - استخراج الصور
+// دالة سريعة لاستخراج الصور - بدون console.log
 function getProductImage(item) {
   const title = (item.title || '').toLowerCase();
   
-  // الأولوية الأولى: صور Shopify الأصلية
+  // صور Shopify أولاً
   const shopifyImages = [
     item.variant_image_url, item.image_url, item.featured_image,
     item.variant?.image_url, item.product?.featured_image
@@ -147,29 +138,34 @@ function getProductImage(item) {
     }
   }
   
-  // الأولوية الثانية: البحث السريع في الصور المحفوظة
+  // البحث في الصور المحفوظة
   for (const [keyword, imageUrl] of Object.entries(REAL_PRODUCT_IMAGES)) {
     if (title.includes(keyword)) {
       return imageUrl;
     }
   }
   
-  // الأولوية الأخيرة: صورة احتياطية
+  // صورة احتياطية
   const price = parseFloat(item.price) || 0;
   return FALLBACK_IMAGES[Math.floor(price) % FALLBACK_IMAGES.length];
 }
 
-// دالة دقيقة للتحقق من المنتجات المجانية
+// دالة ذكية ودقيقة للمنتجات المجانية - الإصلاح النهائي
 function isReallyFreeItem(item) {
   const price = parseFloat(item.price || 0);
   const comparePrice = parseFloat(item.compare_at_price || 0);
   const title = (item.title || '').toLowerCase();
   
-  // القاعدة الأساسية: إذا السعر > 0 = ليس مجاني أبداً
-  if (price > 0) return false;
+  // القاعدة المهمة: إذا السعر > 0 = ليس مجاني مطلقاً
+  // حتى لو كان العنوان يحتوي على "FREE"
+  if (price > 0) {
+    return false;
+  }
   
   // إذا السعر = 0 والـ compare_at_price > 0 = هدية حقيقية
-  if (price === 0 && comparePrice > 0) return true;
+  if (price === 0 && comparePrice > 0) {
+    return true;
+  }
   
   // إذا السعر = 0 و compare_at_price = 0 لكن العنوان يحتوي على FREE
   if (price === 0 && comparePrice === 0 && 
@@ -216,12 +212,10 @@ app.get("/test/wayl", async (req, res) => {
   try {
     const country = detectCustomerCountry(req);
     const settings = getDisplaySettings(country);
-
     const testRes = await fetch(`${WAYL_API_BASE}/api/v1/verify-auth-key`, {
       headers: { "X-WAYL-AUTHENTICATION": WAYL_API_KEY },
     });
     const testData = await testRes.json();
-
     res.json({
       waylApiStatus: testRes.ok ? "✅ متصل" : "❌ خطأ",
       statusCode: testRes.status,
@@ -235,13 +229,13 @@ app.get("/test/wayl", async (req, res) => {
   }
 });
 
+// Webhook محسن للسرعة - بدون console.log كثيرة
 app.post("/webhooks/shopify/orders/create", async (req, res) => {
   try {
-    console.log("📦 طلب جديد من Shopify");
+    console.log("📦 طلب جديد");
 
     if (process.env.NODE_ENV === "production") {
       if (!verifyShopifyWebhook(req)) {
-        console.error("❌ HMAC غير صحيح");
         return res.status(401).send("Invalid HMAC");
       }
     }
@@ -252,8 +246,6 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
     const totalAmount = parseFloat(order.total_price);
     const currency = order.currency;
 
-    console.log(`طلب: ${orderName} - المبلغ: ${totalAmount} ${currency}`);
-
     const customerCountry = order.shipping_address?.country_code || 
                            order.billing_address?.country_code || 
                            detectCustomerCountry(req);
@@ -263,6 +255,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
     let freeItemsCount = 0;
     let realImagesCount = 0;
     
+    // معالجة المنتجات
     if (order.line_items?.length) {
       order.line_items.forEach((item) => {
         const isFree = isReallyFreeItem(item);
@@ -274,7 +267,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
           freeItemsCount++;
           lineItems.push({
             label: item.title || "Free Product",
-            amount: 1,
+            amount: 1, // 1 IQD للمنتجات المجانية فقط
             type: "increase",
             image: productImage,
           });
@@ -294,6 +287,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
       });
     }
 
+    // معالجة الشحن
     if (order.shipping_lines?.length) {
       order.shipping_lines.forEach((shipping) => {
         const shippingAmountUSD = parseFloat(shipping.price);
@@ -318,6 +312,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
       });
     }
 
+    // معالجة الضرائب
     if (order.tax_lines?.length) {
       order.tax_lines.forEach((tax) => {
         const taxAmountUSD = parseFloat(tax.price);
@@ -332,6 +327,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
       });
     }
 
+    // إذا لا توجد عناصر
     if (lineItems.length === 0) {
       const totalInIQDOnly = convertToIQD(totalAmount, currency);
       lineItems.push({
@@ -346,7 +342,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
     const orderGID = `gid://shopify/Order/${orderId}`;
     const totalInIQD = lineItems.reduce((sum, i) => sum + i.amount, 0);
 
-    console.log(`🔗 إنشاء رابط WAYL - مجاني: ${freeItemsCount} - صور حقيقية: ${realImagesCount}/${lineItems.length}`);
+    console.log(`💰 للعرض: ${totalAmount} ${currency} - للدفع: ${totalInIQD} IQD - مجاني: ${freeItemsCount}`);
 
     const waylPayload = {
       referenceId,
@@ -371,7 +367,6 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
       const waylResponse = await waylRes.json();
 
       if (!waylRes.ok || waylRes.status !== 201) {
-        console.error("❌ خطأ WAYL:", waylResponse);
         throw new Error(`فشل إنشاء رابط WAYL: ${JSON.stringify(waylResponse)}`);
       }
 
@@ -379,8 +374,8 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
       const waylLinkId = waylResponse.data.id;
 
       payUrl = buildWaylUrl(payUrl, displaySettings);
-      console.log(`✅ رابط WAYL: ${payUrl}`);
 
+      // حفظ البيانات في Shopify
       const metafieldsMutation = `
         mutation SetPaymentMetafields($metafields: [MetafieldsSetInput!]!) {
           metafieldsSet(metafields: $metafields) {
@@ -427,7 +422,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
 
       await shopifyGraphQL(noteUpdateMutation, { input: { id: orderGID, note: currentNote + waylNote } });
 
-      console.log(`✅ تم حفظ بيانات الدفع للطلب ${orderName}`);
+      console.log(`✅ تم إنشاء رابط WAYL للطلب ${orderName}`);
 
       const shouldRedirect = req.headers['x-shopify-topic'] || 
                            req.query.redirect === 'true' || 
@@ -582,7 +577,6 @@ app.get("/pay/:referenceId", (req, res) => {
     const finalUrl = buildWaylUrl(baseUrl, settings);
     return res.redirect(finalUrl);
   } catch (e) {
-    console.error("Error creating custom payment link:", e);
     res.status(500).send("Error creating payment link");
   }
 });
@@ -630,7 +624,6 @@ app.get("/orders/:orderId/pay", async (req, res) => {
     const finalUrl = buildWaylUrl(base, effSettings);
     return res.redirect(finalUrl);
   } catch (e) {
-    console.error("Error redirecting order to WAYL:", e);
     res.status(500).json({ ok: false, error: e.message });
   }
 });
@@ -658,7 +651,6 @@ app.get('/redirect-to-payment/:orderId', async (req, res) => {
     
     res.status(404).send('Payment link not found');
   } catch (e) {
-    console.error("Error in redirect-to-payment:", e);
     res.status(500).send('Error: ' + e.message);
   }
 });
@@ -752,7 +744,6 @@ app.get('/pay', async (req, res) => {
         `);
         
     } catch (error) {
-        console.error('❌ خطأ في /pay:', error);
         res.status(500).send(`
             <!DOCTYPE html>
             <html><head><meta charset="UTF-8"><title>Payment Error</title>
@@ -784,24 +775,20 @@ app.get('/payment', async (req, res) => {
         }
         res.redirect('/pay');
     } catch (error) {
-        console.error('خطأ في /payment:', error);
         res.redirect('/pay');
     }
 });
 
 app.post("/webhooks/wayl/payment", async (req, res) => {
   try {
-    console.log("💰 إشعار دفع من WAYL");
     const { status, referenceId, id: transactionId, completedAt } = req.body || {};
 
     if (!referenceId) {
-      console.error("Missing referenceId in WAYL webhook");
       return res.status(400).send("Missing referenceId");
     }
 
     const match = referenceId.match(/SHOPIFY-(\d+)-/);
     if (!match) {
-      console.error("Invalid referenceId format:", referenceId);
       return res.status(400).send("Invalid referenceId format");
     }
 
@@ -849,7 +836,6 @@ app.post("/webhooks/wayl/payment", async (req, res) => {
 
     res.status(200).json({ success: true });
   } catch (e) {
-    console.error("❌ خطأ في معالجة إشعار الدفع:", e);
     res.status(500).json({ error: e.message });
   }
 });
