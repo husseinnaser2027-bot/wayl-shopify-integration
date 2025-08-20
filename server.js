@@ -22,7 +22,7 @@ const {
   DEFAULT_CURRENCY = "USD",
   BASE_URL = "http://localhost:3000",
   AUTO_REDIRECT = "false",
-  REDIRECT_DELAY = "1000", // تقليل أكثر
+  REDIRECT_DELAY = "500", // تسريع أكثر - نصف ثانية فقط
 } = process.env;
 
 // ==================== CONSTANTS ====================
@@ -129,21 +129,71 @@ function getImage(title) {
   return FALLBACK_IMAGE;
 }
 
-// دالة سريعة للتحقق من المجانية
-function isFree(item) {
-  const title = (item.title || '').toLowerCase();
+// النظام الذكي الجديد للكشف عن المنتجات المجانية - يعمل تلقائياً
+function isSmartFree(item) {
   const price = parseFloat(item.price || 0);
+  const comparePrice = parseFloat(item.compare_at_price || 0);
+  const title = (item.title || '').toLowerCase();
   
-  // أولوية العنوان
-  if (title.includes('+ free') || title.includes('+free') || 
-      title.includes('free ') || title.startsWith('free')) {
+  // القاعدة الأولى: أي منتج سعره 0 = مجاني (مهما كان العنوان)
+  if (price === 0) {
     return true;
   }
   
-  // ثم السعر
-  if (price === 0) return true;
+  // القاعدة الثانية: إذا كان هناك compare_at_price وسعر المنتج أقل بنسبة 100% = مجاني
+  if (comparePrice > 0 && price === 0) {
+    return true;
+  }
+  
+  // القاعدة الثالثة: إذا كان العنوان يحتوي على كلمات مجانية مع خصم 100%
+  if ((title.includes('free') || title.includes('+ free') || title.includes('+free')) && 
+      comparePrice > 0 && price < (comparePrice * 0.1)) {
+    return true;
+  }
+  
+  // القاعدة الرابعة: منتجات Shopify التي تظهر كـ "FREE" في العنوان
+  if (title.includes('free') && price <= 1) {
+    return true;
+  }
   
   return false;
+}
+
+// دالة ذكية للكشف عن المنتجات المخصومة (تظهر بسعرها المخصوم)
+function getSmartPrice(item, currency) {
+  const price = parseFloat(item.price || 0);
+  const comparePrice = parseFloat(item.compare_at_price || 0);
+  
+  // إذا كان المنتج مجاني
+  if (isSmartFree(item)) {
+    return 1; // 1 IQD للمنتجات المجانية
+  }
+  
+  // إذا كان المنتج له سعر عادي
+  if (price > 0) {
+    const quantity = item.quantity || 1;
+    const totalItemUSD = price * quantity;
+    return convertToIQD(totalItemUSD, currency);
+  }
+  
+  // احتياط - إذا لم يتطابق مع أي قاعدة
+  return convertToIQD(price || 1, currency);
+}
+
+// دالة ذكية لتسمية المنتجات المجانية
+function getSmartLabel(item) {
+  const title = item.title || "Product";
+  
+  if (isSmartFree(item)) {
+    // إذا كان العنوان لا يحتوي على FREE، أضفها
+    if (!title.toLowerCase().includes('free')) {
+      return `FREE ${title}`;
+    }
+    // إذا كان يحتوي على FREE، استخدمه كما هو
+    return title;
+  }
+  
+  return title;
 }
 
 process.on('uncaughtException', (error) => console.error('❌ Uncaught Exception:', error));
@@ -194,9 +244,10 @@ app.get("/test/wayl", async (req, res) => {
   }
 });
 
-// Webhook فائق السرعة - إزالة جميع العمليات غير الضرورية
+// Webhook فائق السرعة مع النظام الذكي الجديد
 app.post("/webhooks/shopify/orders/create", async (req, res) => {
   try {
+    // تحقق سريع من HMAC في الإنتاج فقط
     if (process.env.NODE_ENV === "production" && !verifyShopifyWebhook(req)) {
       return res.status(401).send("Invalid HMAC");
     }
@@ -207,6 +258,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
     const totalAmount = parseFloat(order.total_price);
     const currency = order.currency;
 
+    // كشف سريع للدولة
     const customerCountry = order.shipping_address?.country_code || 
                            order.billing_address?.country_code || 
                            detectCustomerCountry(req);
@@ -215,37 +267,28 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
     const lineItems = [];
     let freeItemsCount = 0;
     
-    // معالجة المنتجات - فائقة السرعة
+    // معالجة المنتجات - النظام الذكي الجديد
     if (order.line_items?.length) {
       for (const item of order.line_items) {
-        const isItemFree = isFree(item);
+        const isFreeItem = isSmartFree(item);
+        const smartPrice = getSmartPrice(item, currency);
+        const smartLabel = getSmartLabel(item);
         const productImage = getImage(item.title);
         
-        if (isItemFree) {
+        if (isFreeItem) {
           freeItemsCount++;
-          lineItems.push({
-            label: item.title || "Free Product",
-            amount: 1,
-            type: "increase",
-            image: productImage,
-          });
-        } else {
-          const itemPriceUSD = parseFloat(item.price);
-          const itemQuantity = item.quantity;
-          const totalItemUSD = itemPriceUSD * itemQuantity;
-          const amountInIQD = convertToIQD(totalItemUSD, currency);
-
-          lineItems.push({
-            label: item.title || "Product",
-            amount: amountInIQD,
-            type: "increase",
-            image: productImage,
-          });
         }
+        
+        lineItems.push({
+          label: smartLabel,
+          amount: smartPrice,
+          type: "increase",
+          image: productImage,
+        });
       }
     }
 
-    // معالجة الشحن - مع إصلاح مشكلة التكرار
+    // معالجة الشحن - سريعة ومحسنة
     if (order.shipping_lines?.length) {
       for (const shipping of order.shipping_lines) {
         const shippingAmountUSD = parseFloat(shipping.price);
@@ -253,11 +296,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
         
         // إصلاح مشكلة تكرار كلمة shipping
         let shippingLabel = shipping.title || "Shipping";
-        if (shippingLabel.toLowerCase().includes('shipping')) {
-          // إذا كان العنوان يحتوي على shipping، استخدمه كما هو
-          shippingLabel = shippingLabel;
-        } else {
-          // إذا لم يحتوي، أضف Shipping في البداية
+        if (!shippingLabel.toLowerCase().includes('shipping')) {
           shippingLabel = `Shipping - ${shippingLabel}`;
         }
         
@@ -295,7 +334,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
       }
     }
 
-    // إذا لا توجد عناصر
+    // إذا لا توجد عناصر - احتياط
     if (lineItems.length === 0) {
       const totalInIQDOnly = convertToIQD(totalAmount, currency);
       lineItems.push({
@@ -310,6 +349,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
     const orderGID = `gid://shopify/Order/${orderId}`;
     const totalInIQD = lineItems.reduce((sum, i) => sum + i.amount, 0);
 
+    // إعداد payload لـ WAYL
     const waylPayload = {
       referenceId,
       total: totalInIQD,
@@ -320,7 +360,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
       redirectionUrl: order.order_status_url || `https://${SHOPIFY_STORE_DOMAIN}/account`,
     };
 
-    // استدعاء WAYL - سريع
+    // استدعاء WAYL - فائق السرعة
     const waylRes = await fetch(`${WAYL_API_BASE}/api/v1/links`, {
       method: "POST",
       headers: {
@@ -337,19 +377,16 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
     }
 
     let payUrl = waylResponse.data.url;
-    const waylLinkId = waylResponse.data.id;
-
     payUrl = buildWaylUrl(payUrl, displaySettings);
 
-    // حفظ البيانات الأساسية فقط - تقليل العمليات
+    // حفظ البيانات الأساسية فقط للسرعة القصوى
     const metafields = [
       { ownerId: orderGID, namespace: "wayl", key: "pay_url", type: "single_line_text_field", value: payUrl },
       { ownerId: orderGID, namespace: "wayl", key: "reference_id", type: "single_line_text_field", value: referenceId },
-      { ownerId: orderGID, namespace: "wayl", key: "display_amount", type: "single_line_text_field", value: `${totalAmount} ${currency}` },
       { ownerId: orderGID, namespace: "wayl", key: "payment_amount", type: "single_line_text_field", value: `${totalInIQD} IQD` },
     ];
 
-    // عمليات Shopify متوازية للسرعة القصوى
+    // عمليات Shopify متوازية للسرعة الفائقة
     await Promise.all([
       shopifyGraphQL(`
         mutation SetPaymentMetafields($metafields: [MetafieldsSetInput!]!) {
@@ -375,6 +412,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
       })
     ]);
 
+    // التحقق من التوجيه
     const shouldRedirect = req.headers['x-shopify-topic'] || 
                            req.query.redirect === 'true' || 
                            AUTO_REDIRECT === 'true';
@@ -405,29 +443,29 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
         <body>
           <div class="container">
             <div class="emoji">💳</div>
-            <h2>${isArabic ? 'جاري تحويلك للدفع' : 'Redirecting to Payment'}</h2>
+            <h2>${isArabic ? 'جاري التحويل للدفع' : 'Redirecting to Payment'}</h2>
             <div class="order-info">
               <strong>${isArabic ? 'طلب:' : 'Order:'}</strong> ${orderName}<br>
               <strong>${isArabic ? 'المبلغ:' : 'Amount:'}</strong> $${totalAmount}
             </div>
             <div class="loader"></div>
-            <p>${isArabic ? 'التحويل خلال:' : 'Redirecting in:'} <span class="countdown" id="countdown">1</span> ${isArabic ? 'ثانية' : 'second'}</p>
+            <p>${isArabic ? 'التحويل خلال:' : 'Redirecting in:'} <span class="countdown" id="countdown">1</span></p>
             <a href="${payUrl}" class="btn" onclick="redirectNow()">${isArabic ? 'ادفع الآن' : 'Pay Now'}</a>
           </div>
           <script>
-            let timeLeft=1;
-            const countdownElement=document.getElementById('countdown');
             const paymentUrl="${payUrl}";
-            function updateCountdown(){
-              countdownElement.textContent=timeLeft;
-              if(timeLeft<=0){redirectNow();return}
-              timeLeft--;setTimeout(updateCountdown,1000)
-            }
             function redirectNow(){window.location.href=paymentUrl}
-            updateCountdown();
             setTimeout(redirectNow,${REDIRECT_DELAY});
             document.addEventListener('click',redirectNow);
             document.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' ')redirectNow()});
+            let timeLeft=1;
+            const countdownElement=document.getElementById('countdown');
+            function updateCountdown(){
+              if(timeLeft<=0){redirectNow();return}
+              countdownElement.textContent=timeLeft;
+              timeLeft--;setTimeout(updateCountdown,500)
+            }
+            updateCountdown();
           </script>
         </body>
         </html>
@@ -446,6 +484,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
       customer_country: customerCountry,
       free_items: freeItemsCount,
       total_items: lineItems.length,
+      smart_detection: "enabled"
     });
 
   } catch (e) {
@@ -470,14 +509,11 @@ app.get("/pay/:referenceId", (req, res) => {
 app.get("/orders/:orderId/pay", async (req, res) => {
   try {
     const { orderId } = req.params;
-    const country = req.query.country || detectCustomerCountry(req);
-    const settings = getDisplaySettings(country);
     const orderGID = `gid://shopify/Order/${orderId}`;
 
     const data = await shopifyGraphQL(`
       query GetWaylLinks($id: ID!) {
         order(id: $id) {
-          id name
           payUrl: metafield(namespace: "wayl", key: "pay_url") { value }
         }
       }
@@ -595,7 +631,7 @@ app.listen(PORT, () => {
   console.log(`💳 WAYL API: ${WAYL_API_BASE}`);
   console.log(`💱 1 USD = ${USD_TO_IQD_RATE} IQD`);
   console.log(`🔄 AUTO_REDIRECT: ${AUTO_REDIRECT}`);
-  console.log(`⏱️ REDIRECT_DELAY: ${REDIRECT_DELAY}ms`);
+  console.log(`⏱️ REDIRECT_DELAY: ${REDIRECT_DELAY}ms (ULTRA FAST)`);
   console.log(`💰 Payment Route: ${BASE_URL}/pay`);
   console.log(`🎯 Smart Payment Route: ${BASE_URL}/payment?order_id=ORDER_ID`);
   console.log(`🌍 Arabic Countries: 22 supported`);
@@ -603,6 +639,7 @@ app.listen(PORT, () => {
   console.log(`💵 Display Currency: USD for all countries`);
   console.log(`💰 Payment Currency: IQD (Iraqi Dinar)`);
   console.log(`🖼️ Real Store Images: ${Object.keys(PRODUCT_IMAGES).length} products`);
-  console.log(`🎁 FREE Items: Title-based detection`);
-  console.log(`🚀 ULTRA FAST: Optimized for maximum speed to prevent customer loss`);
+  console.log(`🤖 SMART FREE DETECTION: Automatic detection of free/discounted items from Shopify cart`);
+  console.log(`⚡ ULTRA FAST MODE: Optimized for maximum speed - no customer loss`);
+  console.log(`✅ ZERO CONFIGURATION: Works automatically without manual code changes`);
 });
