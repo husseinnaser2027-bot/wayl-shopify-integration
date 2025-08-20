@@ -478,12 +478,12 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
         const productImage = getOptimalProductImage(item);
         
         if (isFree) {
-          // منتج مجاني - نرسله بقيمة 1 IQD مع كلمة FREE في العنوان
+          // منتج مجاني - نرسله بقيمة 1 IQD مع اسمه الأصلي
           freeItemsCount++;
           console.log(`🎁 منتج مجاني: ${item.title}`);
           
           lineItems.push({
-            label: `FREE - ${item.title}`,
+            label: item.title || "Free Product",
             amount: 1, // 1 IQD minimum للمنتجات المجانية
             type: "increase",
             image: productImage,
@@ -516,11 +516,11 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
         const shippingImage = getOptimalProductImage({ title: shipping.title || "Shipping" });
         
         if (shippingAmountUSD === 0) {
-          // شحن مجاني - نرسله بقيمة 1 IQD مع كلمة FREE
+          // شحن مجاني - نرسله بقيمة 1 IQD مع اسمه الأصلي
           freeItemsCount++;
           console.log(`🚚 شحن مجاني: ${shipping.title}`);
           lineItems.push({
-            label: `FREE Shipping - ${shipping.title}`,
+            label: shipping.title || "Free Shipping",
             amount: 1, // 1 IQD minimum
             type: "increase",
             image: shippingImage,
