@@ -357,23 +357,28 @@ function getOptimalProductImage(item) {
   return finalImage;
 }
 
-// دالة بسيطة للتحقق من المنتجات المجانية
-function isFreeItem(item) {
+// دالة محسنة للتحقق من المنتجات المجانية - أسرع وأدق
+function analyzeItem(item) {
   const title = item.title ? item.title.toLowerCase() : '';
   const price = parseFloat(item.price || 0);
   const comparePrice = parseFloat(item.compare_at_price || 0);
   
-  // المنتجات التي تحتوي على كلمة free في العنوان
-  if (title.includes('free') || title.includes('+ free')) {
-    return true;
+  // هدايا مجانية حقيقية (تظهر $0.00)
+  if (title.includes('free') && (title.includes('gift') || title.includes('scraper') || title.includes('bonus'))) {
+    return { isFree: true, isGift: true };
   }
   
-  // المنتجات بسعر 0 ولها compare_at_price
-  if (price === 0 && comparePrice > 0) {
-    return true;
+  // شحن مجاني (يظهر $0.00)
+  if (title.includes('shipping') && price === 0) {
+    return { isFree: true, isGift: true };
   }
   
-  return false;
+  // منتجات بسعر 0 لكن ليست هدايا (منتجات اختيارية مخفضة 100%)
+  if (price === 0 && comparePrice > 0 && !title.includes('free')) {
+    return { isFree: false, isGift: false }; // منتج عادي بسعر مخفض للصفر
+  }
+  
+  return { isFree: false, isGift: false };
 }
 
 // معالجة الأخطاء العامة لتجنب تعطل السيرفر
