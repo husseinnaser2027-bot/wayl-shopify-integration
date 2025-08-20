@@ -127,82 +127,40 @@ function getImage(title) {
   return FALLBACK_IMAGE;
 }
 
-// النظام المحسن الجديد للكشف عن المنتجات المجانية - يحل مشكلة "4 filter sets"
-function isReallyFreeProduct(item) {
-  const price = parseFloat(item.price || 0);
-  const comparePrice = parseFloat(item.compare_at_price || 0);
-  const title = (item.title || '').toLowerCase();
+// الحل البسيط: اعتماد كامل على بيانات Shopify
+function processShopifyItem(item, currency) {
+  const itemPrice = parseFloat(item.price || 0);
+  const itemQuantity = parseInt(item.quantity || 1);
+  const itemTitle = item.title || "Product";
   
-  console.log(`فحص المنتج: ${item.title}`);
-  console.log(`السعر: ${price}, السعر المقارن: ${comparePrice}`);
+  console.log(`معالجة منتج: ${itemTitle}`);
+  console.log(`السعر في Shopify: ${itemPrice} USD`);
+  console.log(`الكمية: ${itemQuantity}`);
   
-  // القاعدة الأولى: أي منتج سعره 0 = مجاني مؤكد
-  if (price === 0) {
-    console.log(`منتج مجاني - السعر = 0`);
-    return true;
-  }
-  
-  // القاعدة الثانية: إذا العنوان يحتوي على كلمة free = مجاني
-  if (title.includes('free') || title.includes('+ free') || title.includes('+free')) {
-    console.log(`منتج مجاني - العنوان يحتوي على FREE`);
-    return true;
-  }
-  
-  // القاعدة الثالثة الجديدة: إذا هناك compare_at_price والمنتج مخصوم 100%
-  if (comparePrice > 0 && price === 0) {
-    console.log(`منتج مجاني - مخصوم 100%`);
-    return true;
-  }
-  
-  // القاعدة الرابعة: البندل - إذا compare_at_price موجود وسعر المنتج قليل نسبياً
-  if (comparePrice > 0 && price > 0) {
-    const discountPercent = ((comparePrice - price) / comparePrice) * 100;
-    console.log(`نسبة الخصم: ${discountPercent}%`);
+  // القاعدة الوحيدة: إذا السعر في Shopify = 0 → مجاني في WAYL
+  if (itemPrice === 0) {
+    console.log(`منتج مجاني حسب Shopify - سيرسل بـ 1 IQD`);
+    return {
+      label: itemTitle.toLowerCase().includes('free') ? itemTitle : `FREE ${itemTitle}`,
+      amount: 1, // 1 IQD للمنتجات المجانية
+      type: "increase",
+      image: getImage(itemTitle),
+      isFree: true
+    };
+  } else {
+    // إذا السعر > 0، احسب السعر بالدولار وحوله لدينار
+    const totalUSD = itemPrice * itemQuantity;
+    const totalIQD = convertToIQD(totalUSD, currency);
+    console.log(`منتج مدفوع: ${totalUSD} USD = ${totalIQD} IQD`);
     
-    // إذا كان الخصم أكبر من 70% وسعر المنتج أقل من 25$ = يعتبر مجاني في البندل
-    if (discountPercent >= 70 && price <= 25) {
-      console.log(`منتج مجاني - خصم عالي في البندل`);
-      return true;
-    }
+    return {
+      label: itemTitle,
+      amount: totalIQD,
+      type: "increase",
+      image: getImage(itemTitle),
+      isFree: false
+    };
   }
-  
-  // القاعدة الخامسة الخاصة: منتجات معينة نعرفها مجانية
-  const knownFreeProducts = ['4 filter sets', '8 filter sets', 'cat hair scraper'];
-  for (const freeProduct of knownFreeProducts) {
-    if (title.includes(freeProduct.toLowerCase())) {
-      console.log(`منتج مجاني - من القائمة المعروفة`);
-      return true;
-    }
-  }
-  
-  console.log(`منتج مدفوع`);
-  return false;
-}
-
-function getCorrectPrice(item, currency) {
-  if (isReallyFreeProduct(item)) {
-    return 1; // 1 IQD للمنتجات المجانية
-  }
-  
-  const price = parseFloat(item.price || 0);
-  const quantity = item.quantity || 1;
-  const totalUSD = price * quantity;
-  return convertToIQD(totalUSD, currency);
-}
-
-function getCorrectLabel(item) {
-  const title = item.title || "Product";
-  
-  if (isReallyFreeProduct(item)) {
-    // إذا لم يحتوي العنوان على FREE، أضفها
-    if (!title.toLowerCase().includes('free')) {
-      return `FREE ${title}`;
-    }
-    // إذا كان يحتوي على FREE، استخدمه كما هو
-    return title;
-  }
-  
-  return title;
 }
 
 // ==================== ROUTES ====================
@@ -248,10 +206,10 @@ app.get("/test/wayl", async (req, res) => {
   }
 });
 
-// Webhook محسن مع نظام كشف محسن للمنتجات المجانية
+// Webhook مبسط - يعتمد على بيانات Shopify فقط
 app.post("/webhooks/shopify/orders/create", async (req, res) => {
   try {
-    console.log("=== استقبال طلب جديد ===");
+    console.log("=== طلب جديد من Shopify ===");
 
     if (process.env.NODE_ENV === "production" && !verifyShopifyWebhook(req)) {
       return res.status(401).send("Invalid HMAC");
@@ -263,7 +221,8 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
     const totalAmount = parseFloat(order.total_price);
     const currency = order.currency;
 
-    console.log(`طلب رقم: ${orderName}, المبلغ الإجمالي: ${totalAmount} ${currency}`);
+    console.log(`الطلب: ${orderName}`);
+    console.log(`إجمالي Shopify: ${totalAmount} ${currency}`);
 
     const customerCountry = order.shipping_address?.country_code || 
                            order.billing_address?.country_code || 
@@ -273,37 +232,31 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
     const lineItems = [];
     let freeItemsCount = 0;
     
-    // معالجة المنتجات مع نظام كشف محسن
+    // معالجة المنتجات - بسيطة ومباشرة
     if (order.line_items && order.line_items.length > 0) {
-      console.log(`=== معالجة ${order.line_items.length} منتج ===`);
+      console.log(`\n=== معالجة ${order.line_items.length} منتج ===`);
       
       for (const item of order.line_items) {
-        console.log(`\n--- معالجة منتج: ${item.title} ---`);
+        const processedItem = processShopifyItem(item, currency);
         
-        const isItemFree = isReallyFreeProduct(item);
-        const correctPrice = getCorrectPrice(item, currency);
-        const correctLabel = getCorrectLabel(item);
-        const productImage = getImage(item.title);
-        
-        if (isItemFree) {
+        if (processedItem.isFree) {
           freeItemsCount++;
-          console.log(`✅ تم تحديد المنتج كمجاني: ${correctLabel} - ${correctPrice} IQD`);
-        } else {
-          console.log(`💰 منتج مدفوع: ${correctLabel} - ${correctPrice} IQD`);
         }
         
         lineItems.push({
-          label: correctLabel,
-          amount: correctPrice,
-          type: "increase",
-          image: productImage,
+          label: processedItem.label,
+          amount: processedItem.amount,
+          type: processedItem.type,
+          image: processedItem.image,
         });
+        
+        console.log(`نتيجة: ${processedItem.label} - ${processedItem.amount} IQD`);
       }
     }
 
-    // معالجة الشحن
+    // معالجة الشحن - بسيطة
     if (order.shipping_lines && order.shipping_lines.length > 0) {
-      console.log(`=== معالجة ${order.shipping_lines.length} خط شحن ===`);
+      console.log(`\n=== معالجة الشحن ===`);
       
       for (const shipping of order.shipping_lines) {
         const shippingAmount = parseFloat(shipping.price || 0);
@@ -316,7 +269,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
         
         if (shippingAmount === 0) {
           freeItemsCount++;
-          console.log(`🚚 شحن مجاني: ${shippingLabel}`);
+          console.log(`شحن مجاني: ${shippingLabel}`);
           lineItems.push({
             label: shippingLabel.includes('Free') ? shippingLabel : `Free ${shippingLabel}`,
             amount: 1,
@@ -324,7 +277,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
             image: shippingImage,
           });
         } else {
-          console.log(`🚚 شحن مدفوع: ${shippingLabel} - ${shippingAmount} USD`);
+          console.log(`شحن مدفوع: ${shippingLabel} - ${shippingAmount} USD`);
           lineItems.push({
             label: shippingLabel,
             amount: convertToIQD(shippingAmount, currency),
@@ -350,8 +303,9 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
       }
     }
 
-    // إذا لا توجد عناصر - احتياط
+    // احتياط إذا لم توجد عناصر
     if (lineItems.length === 0) {
+      console.log("لا توجد عناصر - إنشاء عنصر واحد للطلب");
       const totalInIQD = convertToIQD(totalAmount, currency);
       lineItems.push({
         label: `Order ${orderName}`,
@@ -365,10 +319,11 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
     const orderGID = `gid://shopify/Order/${orderId}`;
     const totalInIQD = lineItems.reduce((sum, item) => sum + item.amount, 0);
 
-    console.log(`=== ملخص الطلب ===`);
-    console.log(`المنتجات المجانية: ${freeItemsCount}`);
+    console.log(`\n=== ملخص نهائي ===`);
+    console.log(`عدد المنتجات المجانية: ${freeItemsCount}`);
     console.log(`إجمالي العناصر: ${lineItems.length}`);
-    console.log(`المبلغ النهائي: ${totalInIQD} IQD`);
+    console.log(`مبلغ Shopify: ${totalAmount} ${currency}`);
+    console.log(`مبلغ WAYL: ${totalInIQD} IQD`);
 
     const waylPayload = {
       referenceId,
@@ -380,8 +335,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
       redirectionUrl: order.order_status_url || `https://${SHOPIFY_STORE_DOMAIN}/account`,
     };
 
-    console.log("=== إرسال البيانات إلى WAYL ===");
-    console.log("العناصر المرسلة:");
+    console.log("\n=== إرسال إلى WAYL ===");
     lineItems.forEach((item, index) => {
       console.log(`${index + 1}. ${item.label} - ${item.amount} IQD`);
     });
@@ -398,16 +352,16 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
     const waylResponse = await waylRes.json();
 
     if (!waylRes.ok || waylRes.status !== 201) {
-      console.error("خطأ في WAYL API:", waylResponse);
+      console.error("خطأ WAYL API:", waylResponse);
       throw new Error(`WAYL API Error: ${waylRes.status}`);
     }
 
     let payUrl = waylResponse.data.url;
     payUrl = buildWaylUrl(payUrl, displaySettings);
 
-    console.log(`✅ تم إنشاء رابط WAYL: ${payUrl}`);
+    console.log(`رابط WAYL: ${payUrl}`);
 
-    // حفظ البيانات الأساسية
+    // حفظ البيانات
     const metafields = [
       { ownerId: orderGID, namespace: "wayl", key: "pay_url", type: "single_line_text_field", value: payUrl },
       { ownerId: orderGID, namespace: "wayl", key: "reference_id", type: "single_line_text_field", value: referenceId },
@@ -422,7 +376,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
           }
         }
       `, { metafields });
-      console.log("✅ تم حفظ البيانات في Shopify");
+      console.log("تم حفظ البيانات في Shopify");
     } catch (metafieldsError) {
       console.error("خطأ في حفظ metafields:", metafieldsError);
     }
@@ -505,11 +459,11 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
       order_id: orderId,
       reference_id: referenceId,
       pay_url: payUrl,
-      display_amount: `${totalAmount} ${currency}`,
-      payment_amount: `${totalInIQD} IQD`,
+      shopify_total: `${totalAmount} ${currency}`,
+      wayl_total: `${totalInIQD} IQD`,
       free_items: freeItemsCount,
       total_items: lineItems.length,
-      debug_info: "Advanced free product detection enabled"
+      detection_method: "DIRECT_SHOPIFY_DATA"
     });
 
   } catch (e) {
@@ -610,7 +564,7 @@ app.post("/webhooks/wayl/payment", async (req, res) => {
           }
         `, { input: { id: orderGID } });
         
-        console.log(`✅ تم تحديد الطلب ${orderId} كمدفوع`);
+        console.log(`تم تحديد الطلب ${orderId} كمدفوع`);
       } catch (paymentError) {
         console.error("خطأ في تحديد الدفع:", paymentError);
       }
@@ -639,8 +593,7 @@ app.listen(PORT, () => {
   console.log(`🗣️ Languages: Arabic (ar) + English (en)`);
   console.log(`💵 Display Currency: USD for all countries`);
   console.log(`💰 Payment Currency: IQD (Iraqi Dinar)`);
-  console.log(`🤖 ADVANCED FREE DETECTION: Bundle-aware + Known products`);
-  console.log(`🎁 Known Free Products: 4 filter sets, 8 filter sets, cat hair scraper`);
-  console.log(`⚡ FAST MODE: 500ms redirect`);
-  console.log(`🔍 DEBUG MODE: Detailed logging enabled`);
+  console.log(`✅ SIMPLE DETECTION: Direct Shopify cart data only`);
+  console.log(`📊 RULE: item.price = 0 → FREE (1 IQD), item.price > 0 → Convert to IQD`);
+  console.log(`🎯 NO GUESSING: 100% based on Shopify order data`);
 });
