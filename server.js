@@ -29,7 +29,7 @@ const {
 // ==================== CONSTANTS ====================
 const USD_TO_IQD_RATE = 1320;
 
-// قاموس الصور الحقيقية لمنتجات متجرك - محسن للسرعة
+// قاموس الصور الحقيقية محسن للسرعة
 const REAL_PRODUCT_IMAGES = {
   'hydrocat': 'https://tryhydrocat.com/cdn/shop/files/9c90033b1a407ed93d5c7854445cc20c.png',
   'water fountain': 'https://tryhydrocat.com/cdn/shop/files/9c90033b1a407ed93d5c7854445cc20c.png',
@@ -44,15 +44,15 @@ const REAL_PRODUCT_IMAGES = {
   'shipping': 'https://tryhydrocat.com/cdn/shop/files/free-delivery_d5b4e306-16a1-4d29-85da-859025613537.png'
 };
 
-// صور fallback سريعة
+// صور احتياطية سريعة
 const FALLBACK_IMAGES = [
   'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=300&q=80',
-  'https://images.unsplash.com/photo-1550583724-b2692b85b150?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=300&q=80'
+  'https://images.unsplash.com/photo-1550583724-b2692b85b150?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=300&q=80',
+  'https://images.unsplash.com/photo-1572981779307-38b8cabb2407?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=300&q=80'
 ];
 
 // ==================== HELPERS ====================
 
-// فحص صحة Webhook من Shopify
 function verifyShopifyWebhook(req) {
   try {
     if (!SHOPIFY_WEBHOOK_SECRET) return false;
@@ -70,7 +70,6 @@ function verifyShopifyWebhook(req) {
   }
 }
 
-// كشف البلد من IP العميل
 function detectCustomerCountry(req) {
   const forwardedFor = req.headers["x-forwarded-for"];
   const ip = forwardedFor ? forwardedFor.split(",")[0] : req.connection?.remoteAddress;
@@ -80,7 +79,6 @@ function detectCustomerCountry(req) {
   return "IQ";
 }
 
-// إعدادات العرض حسب البلد
 function getDisplaySettings(country) {
   const arabicCountries = [
     'IQ', 'SA', 'AE', 'KW', 'QA', 'BH', 'OM', 'YE', 'SY', 'LB', 'JO', 'PS', 
@@ -93,7 +91,6 @@ function getDisplaySettings(country) {
   return { language: "en", currency: "usd", displayCurrency: "USD" };
 }
 
-// تحويل المبلغ إلى دينار عراقي للدفع
 function convertToIQD(amount, fromCurrency = "USD") {
   if (fromCurrency === "IQD") return Math.round(amount);
   const rates = { USD: USD_TO_IQD_RATE, EUR: USD_TO_IQD_RATE * 1.1, GBP: USD_TO_IQD_RATE * 1.25 };
@@ -101,7 +98,6 @@ function convertToIQD(amount, fromCurrency = "USD") {
   return Math.max(converted, 1000);
 }
 
-// استدعاء Shopify GraphQL
 async function shopifyGraphQL(query, variables = {}) {
   const res = await fetch(`https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-07/graphql.json`, {
     method: "POST",
@@ -120,7 +116,6 @@ async function shopifyGraphQL(query, variables = {}) {
   return data.data;
 }
 
-// يبني رابط WAYL بإضافة lang/currency
 function buildWaylUrl(baseUrl, { language, currency }) {
   if (!baseUrl) return null;
   
@@ -135,7 +130,7 @@ function buildWaylUrl(baseUrl, { language, currency }) {
   }
 }
 
-// دالة محسنة للسرعة - البحث عن الصور
+// دالة محسنة للسرعة - استخراج الصور
 function getProductImage(item) {
   const title = (item.title || '').toLowerCase();
   
@@ -159,27 +154,22 @@ function getProductImage(item) {
     }
   }
   
-  // الأولوية الأخيرة: صورة fallback
+  // الأولوية الأخيرة: صورة احتياطية
   const price = parseFloat(item.price) || 0;
   return FALLBACK_IMAGES[Math.floor(price) % FALLBACK_IMAGES.length];
 }
 
-// دالة ذكية ودقيقة للتحقق من المنتجات المجانية
+// دالة دقيقة للتحقق من المنتجات المجانية
 function isReallyFreeItem(item) {
   const price = parseFloat(item.price || 0);
   const comparePrice = parseFloat(item.compare_at_price || 0);
   const title = (item.title || '').toLowerCase();
   
-  // القاعدة الأساسية: إذا السعر أكبر من 0 = ليس مجاني أبداً
-  // حتى لو كان العنوان يحتوي على "FREE"
-  if (price > 0) {
-    return false;
-  }
+  // القاعدة الأساسية: إذا السعر > 0 = ليس مجاني أبداً
+  if (price > 0) return false;
   
   // إذا السعر = 0 والـ compare_at_price > 0 = هدية حقيقية
-  if (price === 0 && comparePrice > 0) {
-    return true;
-  }
+  if (price === 0 && comparePrice > 0) return true;
   
   // إذا السعر = 0 و compare_at_price = 0 لكن العنوان يحتوي على FREE
   if (price === 0 && comparePrice === 0 && 
@@ -190,7 +180,6 @@ function isReallyFreeItem(item) {
   return false;
 }
 
-// معالجة الأخطاء العامة
 process.on('uncaughtException', (error) => {
   console.error('❌ Uncaught Exception:', error);
 });
@@ -201,12 +190,10 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // ==================== ROUTES ====================
 
-// صفحة رئيسية بسيطة
 app.get("/", (_req, res) => {
   res.type("text/plain").send("WAYL-Shopify Integration is running. Try /health");
 });
 
-// صفحة اختبار الصحة
 app.get("/health", (req, res) => {
   const country = detectCustomerCountry(req);
   const settings = getDisplaySettings(country);
@@ -225,7 +212,6 @@ app.get("/health", (req, res) => {
   });
 });
 
-// اختبار الاتصال بـ WAYL
 app.get("/test/wayl", async (req, res) => {
   try {
     const country = detectCustomerCountry(req);
@@ -249,12 +235,10 @@ app.get("/test/wayl", async (req, res) => {
   }
 });
 
-// استقبال Webhook من Shopify عند إنشاء الطلب - محسن للسرعة
 app.post("/webhooks/shopify/orders/create", async (req, res) => {
   try {
     console.log("📦 طلب جديد من Shopify");
 
-    // التحقق من صحة الـ webhook في الإنتاج فقط
     if (process.env.NODE_ENV === "production") {
       if (!verifyShopifyWebhook(req)) {
         console.error("❌ HMAC غير صحيح");
@@ -270,20 +254,16 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
 
     console.log(`طلب: ${orderName} - المبلغ: ${totalAmount} ${currency}`);
 
-    // تحديد إعدادات العرض
     const customerCountry = order.shipping_address?.country_code || 
                            order.billing_address?.country_code || 
                            detectCustomerCountry(req);
     const displaySettings = getDisplaySettings(customerCountry);
 
-    // بناء line items مع معالجة سريعة ودقيقة
     const lineItems = [];
     let freeItemsCount = 0;
     let realImagesCount = 0;
     
     if (order.line_items?.length) {
-      console.log(`🛍️ معالجة ${order.line_items.length} عنصر...`);
-      
       order.line_items.forEach((item) => {
         const isFree = isReallyFreeItem(item);
         const productImage = getProductImage(item);
@@ -291,18 +271,14 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
         if (productImage.includes('tryhydrocat.com')) realImagesCount++;
         
         if (isFree) {
-          // منتج مجاني - نرسله بقيمة 1 IQD فقط لـ WAYL API
           freeItemsCount++;
-          console.log(`🎁 مجاني: ${item.title}`);
-          
           lineItems.push({
             label: item.title || "Free Product",
-            amount: 1, // الحد الأدنى لـ WAYL API
+            amount: 1,
             type: "increase",
             image: productImage,
           });
         } else {
-          // منتج مدفوع
           const itemPriceUSD = parseFloat(item.price);
           const itemQuantity = item.quantity;
           const totalItemUSD = itemPriceUSD * itemQuantity;
@@ -318,14 +294,12 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
       });
     }
 
-    // الشحن
     if (order.shipping_lines?.length) {
       order.shipping_lines.forEach((shipping) => {
         const shippingAmountUSD = parseFloat(shipping.price);
         const shippingImage = getProductImage({ title: shipping.title || "Shipping" });
         
         if (shippingAmountUSD === 0) {
-          // شحن مجاني
           freeItemsCount++;
           lineItems.push({
             label: shipping.title || "Free Shipping",
@@ -334,7 +308,6 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
             image: shippingImage,
           });
         } else {
-          // شحن مدفوع
           lineItems.push({
             label: `Shipping - ${shipping.title}`,
             amount: convertToIQD(shippingAmountUSD, currency),
@@ -345,7 +318,6 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
       });
     }
 
-    // الضرائب
     if (order.tax_lines?.length) {
       order.tax_lines.forEach((tax) => {
         const taxAmountUSD = parseFloat(tax.price);
@@ -360,7 +332,6 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
       });
     }
 
-    // إذا ماكو عناصر، خلي عنصر واحد بالمجموع
     if (lineItems.length === 0) {
       const totalInIQDOnly = convertToIQD(totalAmount, currency);
       lineItems.push({
@@ -407,11 +378,9 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
       let payUrl = waylResponse.data.url;
       const waylLinkId = waylResponse.data.id;
 
-      // أضف lang/currency للعرض
       payUrl = buildWaylUrl(payUrl, displaySettings);
       console.log(`✅ رابط WAYL: ${payUrl}`);
 
-      // حفظ الـ Metafields
       const metafieldsMutation = `
         mutation SetPaymentMetafields($metafields: [MetafieldsSetInput!]!) {
           metafieldsSet(metafields: $metafields) {
@@ -434,7 +403,6 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
 
       await shopifyGraphQL(metafieldsMutation, { metafields });
 
-      // تحديث ملاحظة الطلب
       const noteUpdateMutation = `
         mutation orderUpdate($input: OrderInput!) {
           orderUpdate(input: $input) {
@@ -461,7 +429,6 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
 
       console.log(`✅ تم حفظ بيانات الدفع للطلب ${orderName}`);
 
-      // التوجيه التلقائي
       const shouldRedirect = req.headers['x-shopify-topic'] || 
                            req.query.redirect === 'true' || 
                            AUTO_REDIRECT === 'true';
@@ -575,7 +542,6 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
         `);
       }
 
-      // إرجاع JSON عادي
       res.status(200).json({
         success: true,
         message: `تم إنشاء رابط الدفع للطلب ${orderName}`,
@@ -607,7 +573,6 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
   }
 });
 
-// إنشاء رابط دفع مخصص بالـ reference
 app.get("/pay/:referenceId", (req, res) => {
   try {
     const { referenceId } = req.params;
@@ -622,7 +587,6 @@ app.get("/pay/:referenceId", (req, res) => {
   }
 });
 
-// تحويل للـ WAYL باستخدام رقم الطلب في Shopify
 app.get("/orders/:orderId/pay", async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -671,7 +635,6 @@ app.get("/orders/:orderId/pay", async (req, res) => {
   }
 });
 
-// حل بديل للتوجيه المباشر
 app.get('/redirect-to-payment/:orderId', async (req, res) => {
   try {
     const orderId = req.params.orderId;
@@ -700,7 +663,6 @@ app.get('/redirect-to-payment/:orderId', async (req, res) => {
   }
 });
 
-// الدفع العام
 app.get('/pay', async (req, res) => {
     try {
         const query = `
@@ -813,7 +775,6 @@ app.get('/pay', async (req, res) => {
     }
 });
 
-// Route مرادف للدفع - محدث لدعم order_id
 app.get('/payment', async (req, res) => {
     try {
         const orderId = req.query.order_id;
@@ -828,7 +789,6 @@ app.get('/payment', async (req, res) => {
     }
 });
 
-// Webhook من WAYL لإكمال الدفع
 app.post("/webhooks/wayl/payment", async (req, res) => {
   try {
     console.log("💰 إشعار دفع من WAYL");
@@ -849,7 +809,6 @@ app.post("/webhooks/wayl/payment", async (req, res) => {
     const orderGID = `gid://shopify/Order/${orderId}`;
 
     if (status === "Completed") {
-      // تحديد الطلب كمدفوع
       const markPaidMutation = `
         mutation orderMarkAsPaid($input: OrderMarkAsPaidInput!) {
           orderMarkAsPaid(input: $input) {
@@ -860,7 +819,6 @@ app.post("/webhooks/wayl/payment", async (req, res) => {
       `;
       await shopifyGraphQL(markPaidMutation, { input: { id: orderGID } });
 
-      // تحديث Metafields
       const updateMetafieldsMutation = `
         mutation SetPaymentMetafields($metafields: [MetafieldsSetInput!]!) {
           metafieldsSet(metafields: $metafields) {
@@ -876,7 +834,6 @@ app.post("/webhooks/wayl/payment", async (req, res) => {
       ];
       await shopifyGraphQL(updateMetafieldsMutation, { metafields: completionMetafields });
 
-      // إضافة تاغات
       const addTagMutation = `
         mutation tagsAdd($id: ID!, $tags: [String!]!) {
           tagsAdd(id: $id, tags: $tags) {
@@ -916,3 +873,4 @@ app.listen(PORT, () => {
   console.log(`🖼️ Product Images: Real images from tryhydrocat.com + Unsplash fallback`);
   console.log(`🏪 Store Images Available: ${Object.keys(REAL_PRODUCT_IMAGES).length} products mapped`);
   console.log(`🎁 Free Items: Smart detection - only price=0 items are free`);
+});
