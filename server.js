@@ -29,86 +29,86 @@ const {
 // ==================== CONSTANTS ====================
 const USD_TO_IQD_RATE = 1320;
 
-// 🎯 قاموس الصور الحقيقية لمنتجات متجرك - محدث مع الصور الحقيقية الجديدة
+// 🎯 قاموس الصور الحقيقية لمنتجات متجرك - محدث مع جميع الصور الجديدة
 const REAL_PRODUCT_IMAGES = {
   // HydroCat Products - الصور الحقيقية من متجرك
   'hydrocat': {
-    main: 'http://tryhydrocat.com/cdn/shop/files/9c90033b1a407ed93d5c7854445cc20c.png',
+    main: 'https://tryhydrocat.com/cdn/shop/files/9c90033b1a407ed93d5c7854445cc20c.png',
     gallery: [
-      'http://tryhydrocat.com/cdn/shop/files/1_7bf74595-ff6c-44fa-85c5-4e53e1f080d9.png',
-      'http://tryhydrocat.com/cdn/shop/files/8.png',
-      'http://tryhydrocat.com/cdn/shop/files/7.png',
-      'http://tryhydrocat.com/cdn/shop/files/10.png',
-      'http://tryhydrocat.com/cdn/shop/files/9.png'
+      'https://tryhydrocat.com/cdn/shop/files/1_7bf74595-ff6c-44fa-85c5-4e53e1f080d9.png',
+      'https://tryhydrocat.com/cdn/shop/files/8.png',
+      'https://tryhydrocat.com/cdn/shop/files/7.png',
+      'https://tryhydrocat.com/cdn/shop/files/10.png',
+      'https://tryhydrocat.com/cdn/shop/files/9.png'
     ]
   },
   
   // Water Fountain variations
   'water fountain': {
-    main: 'http://tryhydrocat.com/cdn/shop/files/9c90033b1a407ed93d5c7854445cc20c.png',
-    gallery: ['http://tryhydrocat.com/cdn/shop/files/1_7bf74595-ff6c-44fa-85c5-4e53e1f080d9.png']
+    main: 'https://tryhydrocat.com/cdn/shop/files/9c90033b1a407ed93d5c7854445cc20c.png',
+    gallery: ['https://tryhydrocat.com/cdn/shop/files/1_7bf74595-ff6c-44fa-85c5-4e53e1f080d9.png']
   },
   
   // Stainless Steel variations
   'stainless steel water fountain': {
-    main: 'http://tryhydrocat.com/cdn/shop/files/9c90033b1a407ed93d5c7854445cc20c.png',
-    gallery: ['http://tryhydrocat.com/cdn/shop/files/8.png']
+    main: 'https://tryhydrocat.com/cdn/shop/files/9c90033b1a407ed93d5c7854445cc20c.png',
+    gallery: ['https://tryhydrocat.com/cdn/shop/files/8.png']
   },
   
   // Cat Fountain variations
   'cat fountain': {
-    main: 'http://tryhydrocat.com/cdn/shop/files/9c90033b1a407ed93d5c7854445cc20c.png',
-    gallery: ['http://tryhydrocat.com/cdn/shop/files/7.png']
+    main: 'https://tryhydrocat.com/cdn/shop/files/9c90033b1a407ed93d5c7854445cc20c.png',
+    gallery: ['https://tryhydrocat.com/cdn/shop/files/7.png']
   },
   
   // 🆕 Filter Sets الجديدة - الصور الحقيقية من موقعك
   '8 filter sets': {
-    main: 'http://tryhydrocat.com/cdn/shop/files/1_189b0f59-a79b-43ef-91c8-6342012c076a.png',
-    gallery: ['http://tryhydrocat.com/cdn/shop/files/1_189b0f59-a79b-43ef-91c8-6342012c076a.png']
+    main: 'https://tryhydrocat.com/cdn/shop/files/1_189b0f59-a79b-43ef-91c8-6342012c076a.png',
+    gallery: ['https://tryhydrocat.com/cdn/shop/files/1_189b0f59-a79b-43ef-91c8-6342012c076a.png']
   },
   
   '4 filter sets': {
-    main: 'http://tryhydrocat.com/cdn/shop/files/4x.png',
-    gallery: ['http://tryhydrocat.com/cdn/shop/files/4x.png']
+    main: 'https://tryhydrocat.com/cdn/shop/files/4x.png',
+    gallery: ['https://tryhydrocat.com/cdn/shop/files/4x.png']
   },
   
-  // Filter Sets عامة
+  // Filter Sets عامة - استنادًا لصور الفلاتر من المنتجات المباعة
   'filter': {
-    main: 'http://tryhydrocat.com/cdn/shop/files/4x.png',
-    gallery: ['http://tryhydrocat.com/cdn/shop/files/1_189b0f59-a79b-43ef-91c8-6342012c076a.png']
+    main: 'https://tryhydrocat.com/cdn/shop/files/4x.png',
+    gallery: ['https://tryhydrocat.com/cdn/shop/files/1_189b0f59-a79b-43ef-91c8-6342012c076a.png']
   },
   
   // 🆕 Cat Hair Scraper - الصورة الحقيقية
   'cat hair scraper': {
-    main: 'http://tryhydrocat.com/cdn/shop/files/S4e10ad5ee06f4701bfae29ffe478a666S_1_1.webp',
-    gallery: ['http://tryhydrocat.com/cdn/shop/files/S4e10ad5ee06f4701bfae29ffe478a666S_1_1.webp']
+    main: 'https://tryhydrocat.com/cdn/shop/files/S4e10ad5ee06f4701bfae29ffe478a666S_1_1.webp',
+    gallery: ['https://tryhydrocat.com/cdn/shop/files/S4e10ad5ee06f4701bfae29ffe478a666S_1_1.webp']
   },
   
   'hair scraper': {
-    main: 'http://tryhydrocat.com/cdn/shop/files/S4e10ad5ee06f4701bfae29ffe478a666S_1_1.webp',
-    gallery: ['http://tryhydrocat.com/cdn/shop/files/S4e10ad5ee06f4701bfae29ffe478a666S_1_1.webp']
+    main: 'https://tryhydrocat.com/cdn/shop/files/S4e10ad5ee06f4701bfae29ffe478a666S_1_1.webp',
+    gallery: ['https://tryhydrocat.com/cdn/shop/files/S4e10ad5ee06f4701bfae29ffe478a666S_1_1.webp']
   },
   
   // 🆕 Free Shipping - الصورة الحقيقية
   'free shipping': {
-    main: 'http://tryhydrocat.com/cdn/shop/files/free-delivery_d5b4e306-16a1-4d29-85da-859025613537.png',
-    gallery: ['http://tryhydrocat.com/cdn/shop/files/free-delivery_d5b4e306-16a1-4d29-85da-859025613537.png']
+    main: 'https://tryhydrocat.com/cdn/shop/files/free-delivery_d5b4e306-16a1-4d29-85da-859025613537.png',
+    gallery: ['https://tryhydrocat.com/cdn/shop/files/free-delivery_d5b4e306-16a1-4d29-85da-859025613537.png']
   },
   
   'shipping': {
-    main: 'http://tryhydrocat.com/cdn/shop/files/free-delivery_d5b4e306-16a1-4d29-85da-859025613537.png',
-    gallery: ['http://tryhydrocat.com/cdn/shop/files/free-delivery_d5b4e306-16a1-4d29-85da-859025613537.png']
+    main: 'https://tryhydrocat.com/cdn/shop/files/free-delivery_d5b4e306-16a1-4d29-85da-859025613537.png',
+    gallery: ['https://tryhydrocat.com/cdn/shop/files/free-delivery_d5b4e306-16a1-4d29-85da-859025613537.png']
   },
   
   'delivery': {
-    main: 'http://tryhydrocat.com/cdn/shop/files/free-delivery_d5b4e306-16a1-4d29-85da-859025613537.png',
-    gallery: ['http://tryhydrocat.com/cdn/shop/files/free-delivery_d5b4e306-16a1-4d29-85da-859025613537.png']
+    main: 'https://tryhydrocat.com/cdn/shop/files/free-delivery_d5b4e306-16a1-4d29-85da-859025613537.png',
+    gallery: ['https://tryhydrocat.com/cdn/shop/files/free-delivery_d5b4e306-16a1-4d29-85da-859025613537.png']
   },
   
   // FREE items - للمنتجات المجانية
   'free': {
-    main: 'http://tryhydrocat.com/cdn/shop/files/S4e10ad5ee06f4701bfae29ffe478a666S_1_1.webp',
-    gallery: ['http://tryhydrocat.com/cdn/shop/files/S4e10ad5ee06f4701bfae29ffe478a666S_1_1.webp']
+    main: 'https://tryhydrocat.com/cdn/shop/files/S4e10ad5ee06f4701bfae29ffe478a666S_1_1.webp',
+    gallery: ['https://tryhydrocat.com/cdn/shop/files/S4e10ad5ee06f4701bfae29ffe478a666S_1_1.webp']
   }
 };
 
@@ -267,7 +267,7 @@ function buildWaylUrl(baseUrl, { language, currency }) {
 }
 
 // 🆕 دالة للتحقق من المنتجات المجانية والشحن المجاني
-function getItemDisplayInfo(item) {
+function analyzeItemForFreeStatus(item) {
   const title = item.title || "Product";
   const originalPrice = parseFloat(item.price || 0);
   const comparePrice = parseFloat(item.compare_at_price || 0);
@@ -279,53 +279,27 @@ function getItemDisplayInfo(item) {
       title.toLowerCase().includes('delivery') || 
       title.toLowerCase().includes('free shipping')) {
     
-    console.log(`🚚 عنصر شحن: ${title}`);
-    return {
-      displayTitle: title,
-      displayPrice: 'FREE',
-      amountIQD: 0,
-      shouldShow: true,
-      type: 'shipping'
-    };
+    if (originalPrice === 0) {
+      console.log(`🚚 شحن مجاني: ${title}`);
+      return { isFree: true, type: 'free_shipping', reason: 'shipping_price_zero' };
+    }
   }
   
   // التحقق من المنتجات المجانية (السعر 0 لكن compare_at_price موجود)
   if (originalPrice === 0 && comparePrice > 0) {
     console.log(`🎁 منتج مجاني: ${title} (كان $${comparePrice})`);
-    return {
-      displayTitle: title,
-      displayPrice: 'FREE',
-      amountIQD: 0,
-      shouldShow: true,
-      type: 'free_product'
-    };
+    return { isFree: true, type: 'free_product', reason: 'compare_price_exists' };
   }
   
   // التحقق من المنتجات المجانية بناءً على النص
   if (title.toLowerCase().includes('free ') || title.toLowerCase().includes('+ free')) {
     console.log(`🎁 منتج مجاني بناءً على العنوان: ${title}`);
-    return {
-      displayTitle: title.replace(/free\s*/gi, '').replace(/\+\s*/gi, '').trim(),
-      displayPrice: 'FREE',
-      amountIQD: 0,
-      shouldShow: true,
-      type: 'free_product'
-    };
+    return { isFree: true, type: 'free_product', reason: 'title_contains_free' };
   }
   
   // منتج عادي بسعر
-  const quantity = item.quantity || 1;
-  const totalUSD = originalPrice * quantity;
-  const amountIQD = convertToIQD(totalUSD);
-  
-  console.log(`💰 منتج عادي: ${title} - $${totalUSD} = ${amountIQD} IQD`);
-  return {
-    displayTitle: title,
-    displayPrice: totalUSD,
-    amountIQD: amountIQD,
-    shouldShow: true,
-    type: 'regular'
-  };
+  console.log(`💰 منتج عادي: ${title} - $${originalPrice}`);
+  return { isFree: false, type: 'regular', reason: 'has_price' };
 }
 
 // 🔍 دالة للبحث عن صورة حقيقية للمنتج - محدثة مع الصور الجديدة
@@ -505,7 +479,7 @@ app.get("/test/wayl", async (req, res) => {
   }
 });
 
-// استقبال Webhook من Shopify عند إنشاء الطلب - محدث مع المنتجات المجانية
+// استقبال Webhook من Shopify عند إنشاء الطلب - محدث مع معالجة العناصر المجانية
 app.post("/webhooks/shopify/orders/create", async (req, res) => {
   try {
     console.log("📦 تم استقبال طلب جديد من Shopify");
@@ -534,8 +508,9 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
     const displaySettings = getDisplaySettings(customerCountry);
     console.log(`🌍 الدولة المكتشفة: ${customerCountry} | إعدادات العرض: ${displaySettings.language}, ${displaySettings.currency}`);
 
-    // بناء line items مع استخراج الصور الحقيقية ومعالجة المنتجات المجانية
+    // بناء line items مع معالجة العناصر المجانية - محدث لتجنب مشاكل WAYL API
     const lineItems = [];
+    const freeItems = []; // لحفظ العناصر المجانية منفصلة
     let realImagesCount = 0;
     let freeItemsCount = 0;
     
@@ -543,51 +518,67 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
       console.log(`🛍️ معالجة ${order.line_items.length} عنصر في الطلب...`);
       
       order.line_items.forEach((item, index) => {
-        // 🆕 استخدام النظام الجديد للمنتجات المجانية
-        const itemInfo = getItemDisplayInfo(item);
+        // 🆕 تحليل العنصر للتحقق من حالة المجانية
+        const freeStatus = analyzeItemForFreeStatus(item);
+        const productImage = getOptimalProductImage(item);
+        const isRealImage = productImage.includes('tryhydrocat.com');
         
-        if (itemInfo.shouldShow) {
-          // 🎯 استخدام النظام المحسن للصور الحقيقية
-          const productImage = getOptimalProductImage(item);
-          const isRealImage = productImage.includes('tryhydrocat.com');
-          const isFreeItem = itemInfo.displayPrice === 'FREE';
+        if (isRealImage) realImagesCount++;
+        
+        if (freeStatus.isFree) {
+          // العنصر مجاني - لا نرسله لـ WAYL، فقط نحفظه للملاحظات
+          freeItemsCount++;
+          freeItems.push({
+            title: item.title,
+            type: freeStatus.type,
+            reason: freeStatus.reason,
+            image: productImage,
+            originalPrice: parseFloat(item.price || 0),
+            comparePrice: parseFloat(item.compare_at_price || 0)
+          });
           
-          if (isRealImage) realImagesCount++;
-          if (isFreeItem) freeItemsCount++;
-          
-          const itemType = isFreeItem ? "neutral" : "increase";
-          
-          console.log(`📦 العنصر ${index + 1}: ${itemInfo.displayTitle} - ${isFreeItem ? 'FREE' : '$' + itemInfo.displayPrice} - صورة: ${isRealImage ? '🏪 (متجرك)' : '📸 (Unsplash)'} - نوع: ${itemType}`);
+          console.log(`🎁 عنصر مجاني (لن يُرسل لـ WAYL): ${item.title} - نوع: ${freeStatus.type}`);
+        } else {
+          // العنصر عادي بسعر - نرسله لـ WAYL
+          const itemPriceUSD = parseFloat(item.price);
+          const itemQuantity = item.quantity;
+          const totalItemUSD = itemPriceUSD * itemQuantity;
+          const amountInIQD = convertToIQD(totalItemUSD, currency);
+
+          console.log(`📦 العنصر ${index + 1}: ${item.title} - $${totalItemUSD} - صورة: ${isRealImage ? '🏪 (متجرك)' : '📸 (Unsplash)'}`);
 
           lineItems.push({
-            label: itemInfo.displayTitle,
-            amount: itemInfo.amountIQD,
-            type: itemType,
+            label: item.title || "Product",
+            amount: amountInIQD,
+            type: "increase",
             image: productImage,
           });
         }
       });
     }
 
-    // الشحن - مع دعم الشحن المجاني
+    // الشحن - مع معالجة الشحن المجاني
     if (order.shipping_lines?.length) {
       console.log(`🚚 معالجة ${order.shipping_lines.length} خط شحن...`);
       
       order.shipping_lines.forEach((shipping) => {
         const shippingAmountUSD = parseFloat(shipping.price);
-        const isFreeShipping = shippingAmountUSD === 0;
         const shippingImage = getOptimalProductImage({ title: shipping.title || "Shipping" });
         
-        if (isFreeShipping) {
-          console.log(`🚚 شحن مجاني: ${shipping.title}`);
+        if (shippingAmountUSD === 0) {
+          // شحن مجاني - لا نرسله لـ WAYL
           freeItemsCount++;
-          lineItems.push({
-            label: `FREE Shipping - ${shipping.title}`,
-            amount: 0,
-            type: "neutral",
+          freeItems.push({
+            title: `FREE Shipping - ${shipping.title}`,
+            type: 'free_shipping',
+            reason: 'shipping_price_zero',
             image: shippingImage,
+            originalPrice: 0,
+            comparePrice: 0
           });
+          console.log(`🚚 شحن مجاني (لن يُرسل لـ WAYL): ${shipping.title}`);
         } else {
+          // شحن مدفوع - نرسله لـ WAYL
           console.log(`🚚 شحن مدفوع: ${shipping.title} - $${shippingAmountUSD}`);
           lineItems.push({
             label: `Shipping - ${shipping.title}`,
@@ -616,9 +607,9 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
       });
     }
 
-    // إذا ماكو عناصر، خلي عنصر واحد بالمجموع
+    // إذا ماكو عناصر مدفوعة، خلي عنصر واحد بالمجموع
     if (lineItems.length === 0) {
-      console.log(`⚠️ لا توجد عناصر منفصلة - إنشاء عنصر واحد للطلب الكامل`);
+      console.log(`⚠️ لا توجد عناصر مدفوعة - إنشاء عنصر واحد للطلب الكامل`);
       
       const totalInIQDOnly = convertToIQD(totalAmount, currency);
       lineItems.push({
@@ -636,23 +627,29 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
     console.log(`🔗 إنشاء رابط WAYL للطلب ${orderName}...`);
     console.log(`💰 للعرض: ${totalAmount} ${currency}`);
     console.log(`💰 للدفع: ${totalInIQD} IQD`);
-    console.log(`🖼️ صور حقيقية من متجرك: ${realImagesCount}/${lineItems.length}`);
-    console.log(`🎁 عناصر مجانية: ${freeItemsCount}/${lineItems.length}`);
+    console.log(`🖼️ صور حقيقية من متجرك: ${realImagesCount}/${order.line_items?.length || 0}`);
+    console.log(`🎁 عناصر مجانية (غير مُرسلة لـ WAYL): ${freeItemsCount}`);
+    console.log(`💳 عناصر مدفوعة (مُرسلة لـ WAYL): ${lineItems.length}`);
 
     const waylPayload = {
       referenceId,
       total: totalInIQD,
       currency: "IQD",
-      lineItem: lineItems,
+      lineItem: lineItems, // فقط العناصر المدفوعة
       webhookUrl: `${BASE_URL}/webhooks/wayl/payment`,
       webhookSecret: crypto.createHash("sha256").update(`${orderId}-${Date.now()}`).digest("hex"),
       redirectionUrl: order.order_status_url || `https://${SHOPIFY_STORE_DOMAIN}/account`,
     };
 
     console.log("📤 إرسال البيانات إلى WAYL:");
-    console.log("📋 المنتجات:", lineItems.map(item => 
-      `${item.label} - ${item.amount === 0 ? 'FREE' : 'PAID'} - ${item.image.includes('tryhydrocat.com') ? 'REAL_STORE_IMAGE' : 'FALLBACK_IMAGE'}`
+    console.log("📋 المنتجات المدفوعة:", lineItems.map(item => 
+      `${item.label} - PAID - ${item.image.includes('tryhydrocat.com') ? 'REAL_STORE_IMAGE' : 'FALLBACK_IMAGE'}`
     ));
+    if (freeItems.length > 0) {
+      console.log("🎁 المنتجات المجانية (غير مُرسلة):", freeItems.map(item => 
+        `${item.title} - FREE (${item.type})`
+      ));
+    }
 
     try {
       const waylRes = await fetch(`${WAYL_API_BASE}/api/v1/links`, {
@@ -701,7 +698,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
 
       await shopifyGraphQL(metafieldsMutation, { metafields });
 
-      // تحديث ملاحظة الطلب مع معلومات الصور والمنتجات المجانية
+      // تحديث ملاحظة الطلب مع معلومات العناصر المجانية
       const noteUpdateMutation = `
         mutation orderUpdate($input: OrderInput!) {
           orderUpdate(input: $input) {
@@ -711,6 +708,20 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
         }
       `;
       const currentNote = order.note || "";
+      
+      // بناء قائمة العناصر المجانية للملاحظة
+      let freeItemsNote = "";
+      if (freeItems.length > 0) {
+        freeItemsNote = `\n🎁 FREE ITEMS INCLUDED:\n`;
+        freeItems.forEach((item, index) => {
+          freeItemsNote += `${index + 1}. ${item.title} - FREE`;
+          if (item.comparePrice > 0) {
+            freeItemsNote += ` (was $${item.comparePrice})`;
+          }
+          freeItemsNote += `\n`;
+        });
+      }
+      
       const waylNote =
         `\n\n--- WAYL Payment Link ---\n` +
         `🔗 Pay URL: ${payUrl}\n` +
@@ -720,8 +731,10 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
         `🌍 Country: ${customerCountry}\n` +
         `🗣️ Language: ${displaySettings.language}\n` +
         `💱 Currency Display: ${displaySettings.currency}\n` +
-        `🖼️ Real Store Images: ${realImagesCount}/${lineItems.length}\n` +
-        `🎁 Free Items: ${freeItemsCount}/${lineItems.length}\n` +
+        `🖼️ Real Store Images: ${realImagesCount}/${order.line_items?.length || 0}\n` +
+        `🎁 Free Items: ${freeItemsCount}\n` +
+        `💳 Paid Items sent to WAYL: ${lineItems.length}\n` +
+        freeItemsNote +
         `📊 Status: Pending Payment`;
 
       await shopifyGraphQL(noteUpdateMutation, { input: { id: orderGID, note: currentNote + waylNote } });
@@ -743,6 +756,7 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
           heading: isArabic ? 'جاري تحويلك لإكمال الدفع' : 'Redirecting you to complete payment',
           orderLabel: isArabic ? 'طلب رقم:' : 'Order:',
           amountLabel: isArabic ? 'المبلغ:' : 'Amount:',
+          freeItemsLabel: isArabic ? 'عناصر مجانية:' : 'Free Items:',
           countdownText: isArabic ? 'سيتم التحويل خلال:' : 'Redirecting in:',
           secondText: isArabic ? 'ثانية' : 'seconds',
           buttonText: isArabic ? '🚀 اذهب للدفع الآن' : '🚀 Go to Payment Now',
@@ -800,6 +814,14 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
                 border-radius: 10px;
                 margin: 20px 0;
                 border: 1px solid rgba(255,255,255,0.2);
+              }
+              .free-items {
+                background: rgba(76, 175, 80, 0.2);
+                padding: 10px;
+                border-radius: 8px;
+                margin: 10px 0;
+                font-size: 0.9rem;
+                border: 1px solid rgba(76, 175, 80, 0.3);
               }
               .loader { 
                 margin: 20px auto; 
@@ -873,6 +895,11 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
               <div class="order-info">
                 <strong>📋 ${redirectText.orderLabel}</strong> ${orderName}<br>
                 <strong>💰 ${redirectText.amountLabel}</strong> $${totalAmount}
+                ${freeItems.length > 0 ? `
+                <div class="free-items">
+                  <strong>🎁 ${redirectText.freeItemsLabel}</strong> ${freeItems.length} عنصر مجاني
+                </div>
+                ` : ''}
               </div>
               
               <div class="loader"></div>
@@ -951,7 +978,8 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
         conversion_rate: USD_TO_IQD_RATE,
         real_store_images: realImagesCount,
         free_items: freeItemsCount,
-        total_items: lineItems.length,
+        paid_items_sent_to_wayl: lineItems.length,
+        total_items: (order.line_items?.length || 0) + (order.shipping_lines?.length || 0),
       });
     } catch (waylError) {
       console.error("❌ خطأ في WAYL API:", waylError);
@@ -1368,7 +1396,7 @@ app.post("/webhooks/wayl/payment", async (req, res) => {
 
 console.log('🚀 تم إضافة route الدفع البسيط مع دعم جميع الدول العربية والـ order_id: /payment');
 console.log('🖼️ تم تحسين نظام الصور مع الصور الحقيقية من متجر tryhydrocat.com');
-console.log('🎁 تم إضافة دعم المنتجات المجانية والشحن المجاني');
+console.log('🎁 تم إضافة دعم المنتجات المجانية والشحن المجاني (لا يُرسل لـ WAYL)');
 
 // ==================== START ====================
 const PORT = process.env.PORT || 3000;
@@ -1388,6 +1416,6 @@ app.listen(PORT, () => {
   console.log(`💰 Payment Currency: IQD (Iraqi Dinar)`);
   console.log(`🖼️ Product Images: Real images from tryhydrocat.com + Unsplash fallback`);
   console.log(`🏪 Store Images Available: ${Object.keys(REAL_PRODUCT_IMAGES).length} products mapped`);
-  console.log(`🎁 Free Products & Shipping Support: ENABLED`);
+  console.log(`🎁 Free Products & Shipping: Detected but NOT sent to WAYL (WAYL API compatible)`);
   console.log(`✨ Real Images System: ACTIVE with ${Object.keys(REAL_PRODUCT_IMAGES).length} mappings`);
 });
