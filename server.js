@@ -33,7 +33,8 @@ const IMAGES = {
   water: 'https://tryhydrocat.com/cdn/shop/files/9c90033b1a407ed93d5c7854445cc20c.png',
   stainless: 'https://tryhydrocat.com/cdn/shop/files/9c90033b1a407ed93d5c7854445cc20c.png',
   fountain: 'https://tryhydrocat.com/cdn/shop/files/9c90033b1a407ed93d5c7854445cc20c.png',
-  filter: 'https://tryhydrocat.com/cdn/shop/files/4x.png',
+  filter4: 'https://tryhydrocat.com/cdn/shop/files/4x.png',
+  filter8: 'https://tryhydrocat.com/cdn/shop/files/1_189b0f59-a79b-43ef-91c8-6342012c076a.png',
   scraper: 'https://tryhydrocat.com/cdn/shop/files/S4e10ad5ee06f4701bfae29ffe478a666S_1_1.webp',
   shipping: 'https://tryhydrocat.com/cdn/shop/files/free-delivery_d5b4e306-16a1-4d29-85da-859025613537.png',
   free: 'https://tryhydrocat.com/cdn/shop/files/S4e10ad5ee06f4701bfae29ffe478a666S_1_1.webp'
@@ -119,7 +120,8 @@ function getImage(title) {
   if (t.includes('hydrocat')) return IMAGES.hydrocat;
   if (t.includes('water') || t.includes('fountain')) return IMAGES.water;
   if (t.includes('stainless')) return IMAGES.stainless;
-  if (t.includes('filter')) return IMAGES.filter;
+  if (t.includes('8 filter')) return IMAGES.filter8;
+  if (t.includes('4 filter') || t.includes('filter')) return IMAGES.filter4;
   if (t.includes('scraper')) return IMAGES.scraper;
   if (t.includes('shipping')) return IMAGES.shipping;
   if (t.includes('free')) return IMAGES.free;
@@ -167,7 +169,7 @@ function isReallyFreeProduct(item) {
   }
   
   // القاعدة الخامسة الخاصة: منتجات معينة نعرفها مجانية
-  const knownFreeProducts = ['4 filter sets', '8 filter sets', 'cat hair scraper'];
+  const knownFreeProducts = ['4 filter sets', 'cat hair scraper'];
   for (const freeProduct of knownFreeProducts) {
     if (title.includes(freeProduct.toLowerCase())) {
       console.log(`منتج مجاني - من القائمة المعروفة`);
@@ -640,7 +642,7 @@ app.listen(PORT, () => {
   console.log(`💵 Display Currency: USD for all countries`);
   console.log(`💰 Payment Currency: IQD (Iraqi Dinar)`);
   console.log(`🤖 ADVANCED FREE DETECTION: Bundle-aware + Known products`);
-  console.log(`🎁 Known Free Products: 4 filter sets, 8 filter sets, cat hair scraper`);
+  console.log(`🎁 Known Free Products: 4 filter sets, cat hair scraper`);
   console.log(`⚡ FAST MODE: 500ms redirect`);
   console.log(`🔍 DEBUG MODE: Detailed logging enabled`);
 });
