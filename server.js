@@ -22,13 +22,13 @@ const {
   DEFAULT_CURRENCY = "USD",
   BASE_URL = "http://localhost:3000",
   AUTO_REDIRECT = "false",
-  REDIRECT_DELAY = "3000",
+  REDIRECT_DELAY = "1500", // تقليل وقت التوجيه
 } = process.env;
 
 // ==================== CONSTANTS ====================
 const USD_TO_IQD_RATE = 1320;
 
-// صور المنتجات - مبسطة للسرعة
+// صور المنتجات - مبسطة للسرعة القصوى
 const REAL_PRODUCT_IMAGES = {
   'hydrocat': 'https://tryhydrocat.com/cdn/shop/files/9c90033b1a407ed93d5c7854445cc20c.png',
   'water fountain': 'https://tryhydrocat.com/cdn/shop/files/9c90033b1a407ed93d5c7854445cc20c.png',
@@ -43,10 +43,7 @@ const REAL_PRODUCT_IMAGES = {
   'shipping': 'https://tryhydrocat.com/cdn/shop/files/free-delivery_d5b4e306-16a1-4d29-85da-859025613537.png'
 };
 
-const FALLBACK_IMAGES = [
-  'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=300&q=80',
-  'https://images.unsplash.com/photo-1550583724-b2692b85b150?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=300&q=80'
-];
+const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=300&q=80';
 
 // ==================== HELPERS ====================
 
@@ -58,7 +55,6 @@ function verifyShopifyWebhook(req) {
       .createHmac("sha256", SHOPIFY_WEBHOOK_SECRET)
       .update(req.rawBody || Buffer.from(JSON.stringify(req.body)), "utf8")
       .digest("base64");
-    if (Buffer.byteLength(hmacHeader) !== Buffer.byteLength(digest)) return false;
     return crypto.timingSafeEqual(Buffer.from(hmacHeader), Buffer.from(digest));
   } catch (e) {
     return false;
@@ -102,9 +98,7 @@ async function shopifyGraphQL(query, variables = {}) {
     body: JSON.stringify({ query, variables }),
   });
   const data = await res.json();
-  if (!res.ok || data.errors) {
-    throw new Error(JSON.stringify(data));
-  }
+  if (!res.ok || data.errors) throw new Error(JSON.stringify(data));
   return data.data;
 }
 
@@ -121,55 +115,42 @@ function buildWaylUrl(baseUrl, { language, currency }) {
   }
 }
 
-// دالة سريعة لاستخراج الصور - بدون console.log
+// دالة سريعة لاستخراج الصور - محسنة للسرعة
 function getProductImage(item) {
   const title = (item.title || '').toLowerCase();
   
-  // صور Shopify أولاً
-  const shopifyImages = [
-    item.variant_image_url, item.image_url, item.featured_image,
-    item.variant?.image_url, item.product?.featured_image
-  ];
+  // صور Shopify أولاً (سريع)
+  if (item.variant_image_url && item.variant_image_url.includes('tryhydrocat.com')) return item.variant_image_url;
+  if (item.image_url && item.image_url.includes('tryhydrocat.com')) return item.image_url;
+  if (item.featured_image && item.featured_image.includes('tryhydrocat.com')) return item.featured_image;
   
-  for (const source of shopifyImages) {
-    if (source && typeof source === 'string' && 
-        (source.includes('tryhydrocat.com') || source.includes('myshopify.com'))) {
-      return source;
-    }
+  // البحث السريع في الصور المحفوظة
+  for (const keyword in REAL_PRODUCT_IMAGES) {
+    if (title.includes(keyword)) return REAL_PRODUCT_IMAGES[keyword];
   }
   
-  // البحث في الصور المحفوظة
-  for (const [keyword, imageUrl] of Object.entries(REAL_PRODUCT_IMAGES)) {
-    if (title.includes(keyword)) {
-      return imageUrl;
-    }
-  }
-  
-  // صورة احتياطية
-  const price = parseFloat(item.price) || 0;
-  return FALLBACK_IMAGES[Math.floor(price) % FALLBACK_IMAGES.length];
+  return FALLBACK_IMAGE;
 }
 
-// دالة ذكية ودقيقة للمنتجات المجانية - الإصلاح النهائي
-function isReallyFreeItem(item) {
+// الإصلاح الرئيسي: دالة ذكية للمنتجات المجانية مع أولوية للعنوان
+function isItemFree(item) {
+  const title = (item.title || '').toLowerCase();
   const price = parseFloat(item.price || 0);
   const comparePrice = parseFloat(item.compare_at_price || 0);
-  const title = (item.title || '').toLowerCase();
   
-  // القاعدة المهمة: إذا السعر > 0 = ليس مجاني مطلقاً
-  // حتى لو كان العنوان يحتوي على "FREE"
-  if (price > 0) {
-    return false;
+  // الأولوية الأولى: إذا العنوان يحتوي على FREE أو + FREE = مجاني مهما كان السعر
+  if (title.includes('+ free') || title.includes('+free') || 
+      title.includes('free ') || title.startsWith('free')) {
+    return true;
   }
   
-  // إذا السعر = 0 والـ compare_at_price > 0 = هدية حقيقية
+  // الأولوية الثانية: إذا السعر = 0 والـ compare_at_price > 0 = هدية
   if (price === 0 && comparePrice > 0) {
     return true;
   }
   
-  // إذا السعر = 0 و compare_at_price = 0 لكن العنوان يحتوي على FREE
-  if (price === 0 && comparePrice === 0 && 
-      (title.includes('free') || title.includes('+ free'))) {
+  // الأولوية الثالثة: إذا السعر = 0 فقط
+  if (price === 0) {
     return true;
   }
   
@@ -229,11 +210,9 @@ app.get("/test/wayl", async (req, res) => {
   }
 });
 
-// Webhook محسن للسرعة - بدون console.log كثيرة
+// Webhook محسن للسرعة القصوى - إزالة جميع console.log غير الضرورية
 app.post("/webhooks/shopify/orders/create", async (req, res) => {
   try {
-    console.log("📦 طلب جديد");
-
     if (process.env.NODE_ENV === "production") {
       if (!verifyShopifyWebhook(req)) {
         return res.status(401).send("Invalid HMAC");
@@ -253,15 +232,12 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
 
     const lineItems = [];
     let freeItemsCount = 0;
-    let realImagesCount = 0;
     
-    // معالجة المنتجات
+    // معالجة المنتجات - محسنة للسرعة
     if (order.line_items?.length) {
-      order.line_items.forEach((item) => {
-        const isFree = isReallyFreeItem(item);
+      for (const item of order.line_items) {
+        const isFree = isItemFree(item);
         const productImage = getProductImage(item);
-        
-        if (productImage.includes('tryhydrocat.com')) realImagesCount++;
         
         if (isFree) {
           freeItemsCount++;
@@ -284,12 +260,12 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
             image: productImage,
           });
         }
-      });
+      }
     }
 
-    // معالجة الشحن
+    // معالجة الشحن - سريعة
     if (order.shipping_lines?.length) {
-      order.shipping_lines.forEach((shipping) => {
+      for (const shipping of order.shipping_lines) {
         const shippingAmountUSD = parseFloat(shipping.price);
         const shippingImage = getProductImage({ title: shipping.title || "Shipping" });
         
@@ -309,22 +285,22 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
             image: shippingImage,
           });
         }
-      });
+      }
     }
 
-    // معالجة الضرائب
+    // معالجة الضرائب - سريعة
     if (order.tax_lines?.length) {
-      order.tax_lines.forEach((tax) => {
+      for (const tax of order.tax_lines) {
         const taxAmountUSD = parseFloat(tax.price);
         if (taxAmountUSD > 0) {
           lineItems.push({
             label: `Tax - ${tax.title}`,
             amount: convertToIQD(taxAmountUSD, currency),
             type: "increase",
-            image: FALLBACK_IMAGES[0],
+            image: FALLBACK_IMAGE,
           });
         }
-      });
+      }
     }
 
     // إذا لا توجد عناصر
@@ -334,15 +310,13 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
         label: `Order ${orderName}`,
         amount: totalInIQDOnly,
         type: "increase",
-        image: FALLBACK_IMAGES[0],
+        image: FALLBACK_IMAGE,
       });
     }
 
     const referenceId = `SHOPIFY-${orderId}-${Date.now()}`;
     const orderGID = `gid://shopify/Order/${orderId}`;
     const totalInIQD = lineItems.reduce((sum, i) => sum + i.amount, 0);
-
-    console.log(`💰 للعرض: ${totalAmount} ${currency} - للدفع: ${totalInIQD} IQD - مجاني: ${freeItemsCount}`);
 
     const waylPayload = {
       referenceId,
@@ -354,216 +328,168 @@ app.post("/webhooks/shopify/orders/create", async (req, res) => {
       redirectionUrl: order.order_status_url || `https://${SHOPIFY_STORE_DOMAIN}/account`,
     };
 
-    try {
-      const waylRes = await fetch(`${WAYL_API_BASE}/api/v1/links`, {
-        method: "POST",
-        headers: {
-          "X-WAYL-AUTHENTICATION": WAYL_API_KEY,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(waylPayload),
-      });
+    // استدعاء WAYL بدون معالجة أخطاء معقدة للسرعة
+    const waylRes = await fetch(`${WAYL_API_BASE}/api/v1/links`, {
+      method: "POST",
+      headers: {
+        "X-WAYL-AUTHENTICATION": WAYL_API_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(waylPayload),
+    });
 
-      const waylResponse = await waylRes.json();
+    const waylResponse = await waylRes.json();
 
-      if (!waylRes.ok || waylRes.status !== 201) {
-        throw new Error(`فشل إنشاء رابط WAYL: ${JSON.stringify(waylResponse)}`);
-      }
+    if (!waylRes.ok || waylRes.status !== 201) {
+      throw new Error(`WAYL API Error: ${waylRes.status}`);
+    }
 
-      let payUrl = waylResponse.data.url;
-      const waylLinkId = waylResponse.data.id;
+    let payUrl = waylResponse.data.url;
+    const waylLinkId = waylResponse.data.id;
 
-      payUrl = buildWaylUrl(payUrl, displaySettings);
+    payUrl = buildWaylUrl(payUrl, displaySettings);
 
-      // حفظ البيانات في Shopify
-      const metafieldsMutation = `
+    // حفظ البيانات في Shopify - بأسرع طريقة ممكنة
+    const metafields = [
+      { ownerId: orderGID, namespace: "wayl", key: "pay_url", type: "single_line_text_field", value: payUrl },
+      { ownerId: orderGID, namespace: "wayl", key: "pay_url_base", type: "single_line_text_field", value: waylResponse.data.url },
+      { ownerId: orderGID, namespace: "wayl", key: "reference_id", type: "single_line_text_field", value: referenceId },
+      { ownerId: orderGID, namespace: "wayl", key: "link_id", type: "single_line_text_field", value: waylLinkId },
+      { ownerId: orderGID, namespace: "wayl", key: "display_amount", type: "single_line_text_field", value: `${totalAmount} ${currency}` },
+      { ownerId: orderGID, namespace: "wayl", key: "payment_amount", type: "single_line_text_field", value: `${totalInIQD} IQD` },
+      { ownerId: orderGID, namespace: "wayl", key: "display_settings", type: "single_line_text_field", value: JSON.stringify(displaySettings) },
+      { ownerId: orderGID, namespace: "wayl", key: "customer_country", type: "single_line_text_field", value: customerCountry },
+    ];
+
+    // استدعاءات Shopify متوازية للسرعة القصوى
+    const [metafieldsResult, noteResult] = await Promise.all([
+      shopifyGraphQL(`
         mutation SetPaymentMetafields($metafields: [MetafieldsSetInput!]!) {
           metafieldsSet(metafields: $metafields) {
             metafields { key value }
             userErrors { field message }
           }
         }
-      `;
-
-      const metafields = [
-        { ownerId: orderGID, namespace: "wayl", key: "pay_url", type: "single_line_text_field", value: payUrl },
-        { ownerId: orderGID, namespace: "wayl", key: "pay_url_base", type: "single_line_text_field", value: waylResponse.data.url },
-        { ownerId: orderGID, namespace: "wayl", key: "reference_id", type: "single_line_text_field", value: referenceId },
-        { ownerId: orderGID, namespace: "wayl", key: "link_id", type: "single_line_text_field", value: waylLinkId },
-        { ownerId: orderGID, namespace: "wayl", key: "display_amount", type: "single_line_text_field", value: `${totalAmount} ${currency}` },
-        { ownerId: orderGID, namespace: "wayl", key: "payment_amount", type: "single_line_text_field", value: `${totalInIQD} IQD` },
-        { ownerId: orderGID, namespace: "wayl", key: "display_settings", type: "single_line_text_field", value: JSON.stringify(displaySettings) },
-        { ownerId: orderGID, namespace: "wayl", key: "customer_country", type: "single_line_text_field", value: customerCountry },
-      ];
-
-      await shopifyGraphQL(metafieldsMutation, { metafields });
-
-      const noteUpdateMutation = `
+      `, { metafields }),
+      
+      shopifyGraphQL(`
         mutation orderUpdate($input: OrderInput!) {
           orderUpdate(input: $input) {
             order { id note }
             userErrors { field message }
           }
         }
-      `;
-      const currentNote = order.note || "";
-      const waylNote =
-        `\n\n--- WAYL Payment Link ---\n` +
-        `🔗 Pay URL: ${payUrl}\n` +
-        `📋 Reference: ${referenceId}\n` +
-        `💰 Display: ${totalAmount} ${currency}\n` +
-        `💰 Payment: ${totalInIQD} IQD\n` +
-        `🌍 Country: ${customerCountry}\n` +
-        `🗣️ Language: ${displaySettings.language}\n` +
-        `💱 Currency Display: ${displaySettings.currency}\n` +
-        `🎁 Free Items: ${freeItemsCount}\n` +
-        `🖼️ Real Store Images: ${realImagesCount}/${lineItems.length}\n` +
-        `📊 Status: Pending Payment`;
+      `, { 
+        input: { 
+          id: orderGID, 
+          note: (order.note || "") + `\n\n--- WAYL Payment ---\nURL: ${payUrl}\nRef: ${referenceId}\nDisplay: ${totalAmount} ${currency}\nPayment: ${totalInIQD} IQD\nFree: ${freeItemsCount}` 
+        } 
+      })
+    ]);
 
-      await shopifyGraphQL(noteUpdateMutation, { input: { id: orderGID, note: currentNote + waylNote } });
-
-      console.log(`✅ تم إنشاء رابط WAYL للطلب ${orderName}`);
-
-      const shouldRedirect = req.headers['x-shopify-topic'] || 
+    const shouldRedirect = req.headers['x-shopify-topic'] || 
                            req.query.redirect === 'true' || 
                            AUTO_REDIRECT === 'true';
 
-      if (shouldRedirect) {
-        const isArabic = displaySettings.language === 'ar';
-        const redirectText = {
-          title: isArabic ? `تحويل للدفع - ${orderName}` : `Redirecting to Payment - ${orderName}`,
-          heading: isArabic ? 'جاري تحويلك لإكمال الدفع' : 'Redirecting you to complete payment',
-          orderLabel: isArabic ? 'طلب رقم:' : 'Order:',
-          amountLabel: isArabic ? 'المبلغ:' : 'Amount:',
-          countdownText: isArabic ? 'سيتم التحويل خلال:' : 'Redirecting in:',
-          secondText: isArabic ? 'ثانية' : 'seconds',
-          buttonText: isArabic ? '🚀 اذهب للدفع الآن' : '🚀 Go to Payment Now',
-          noteText: isArabic ? '💡 إذا لم يتم التحويل تلقائياً، اضغط الزر أعلاه' : '💡 If redirect fails, click the button above'
-        };
-        
-        return res.status(200).send(`
-          <!DOCTYPE html>
-          <html lang="${displaySettings.language}" dir="${isArabic ? 'rtl' : 'ltr'}">
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>${redirectText.title}</title>
-            <style>
-              * { margin: 0; padding: 0; box-sizing: border-box; }
-              body { 
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Cairo', sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white; min-height: 100vh; display: flex;
-                align-items: center; justify-content: center;
-                direction: ${isArabic ? 'rtl' : 'ltr'};
-              }
-              .container {
-                background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px);
-                border-radius: 20px; padding: 40px; text-align: center;
-                max-width: 450px; width: 90%; box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-                border: 1px solid rgba(255,255,255,0.2);
-              }
-              .emoji { font-size: 3rem; margin-bottom: 20px; animation: bounce 2s infinite; }
-              h2 { font-size: 1.5rem; margin-bottom: 20px; font-weight: 600; }
-              .order-info {
-                background: rgba(255,255,255,0.1); padding: 15px; border-radius: 10px;
-                margin: 20px 0; border: 1px solid rgba(255,255,255,0.2);
-              }
-              .loader { 
-                margin: 20px auto; border: 4px solid rgba(255,255,255,0.3); 
-                border-top: 4px solid #fff; border-radius: 50%; 
-                width: 50px; height: 50px; animation: spin 1s linear infinite; 
-              }
-              .countdown { font-size: 2rem; font-weight: bold; color: #FFD700; margin: 10px 0; }
-              .btn {
-                background: linear-gradient(45deg, #4CAF50, #45a049); color: white;
-                border: none; padding: 15px 30px; border-radius: 10px; cursor: pointer;
-                font-size: 16px; font-weight: 600; margin-top: 20px; text-decoration: none;
-                display: inline-block; transition: all 0.3s ease;
-                box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
-              }
-              .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4); }
-              @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-              @keyframes bounce {
-                0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
-                40% { transform: translateY(-10px); } 60% { transform: translateY(-5px); }
-              }
-              .progress-bar {
-                width: 100%; height: 4px; background: rgba(255,255,255,0.3);
-                border-radius: 2px; margin: 20px 0; overflow: hidden;
-              }
-              .progress-fill {
-                height: 100%; background: linear-gradient(90deg, #4CAF50, #FFD700);
-                border-radius: 2px; width: 0%; animation: progress ${REDIRECT_DELAY}ms linear forwards;
-              }
-              @keyframes progress { from { width: 0%; } to { width: 100%; } }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="emoji">💳</div>
-              <h2>${redirectText.heading}</h2>
-              <div class="order-info">
-                <strong>📋 ${redirectText.orderLabel}</strong> ${orderName}<br>
-                <strong>💰 ${redirectText.amountLabel}</strong> $${totalAmount}
-              </div>
-              <div class="loader"></div>
-              <div class="progress-bar"><div class="progress-fill"></div></div>
-              <p>${redirectText.countdownText} <span class="countdown" id="countdown">3</span> ${redirectText.secondText}</p>
-              <a href="${payUrl}" class="btn" onclick="redirectNow()">${redirectText.buttonText}</a>
-              <p style="font-size: 0.9rem; margin-top: 20px; opacity: 0.8;">${redirectText.noteText}</p>
+    if (shouldRedirect) {
+      const isArabic = displaySettings.language === 'ar';
+      return res.status(200).send(`
+        <!DOCTYPE html>
+        <html lang="${displaySettings.language}" dir="${isArabic ? 'rtl' : 'ltr'}">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>${isArabic ? `تحويل للدفع - ${orderName}` : `Redirecting - ${orderName}`}</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { 
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+              direction: ${isArabic ? 'rtl' : 'ltr'};
+            }
+            .container {
+              background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px);
+              border-radius: 20px; padding: 40px; text-align: center; max-width: 450px; width: 90%;
+              box-shadow: 0 20px 40px rgba(0,0,0,0.1); border: 1px solid rgba(255,255,255,0.2);
+            }
+            .emoji { font-size: 3rem; margin-bottom: 20px; animation: bounce 2s infinite; }
+            h2 { font-size: 1.5rem; margin-bottom: 20px; font-weight: 600; }
+            .order-info {
+              background: rgba(255,255,255,0.1); padding: 15px; border-radius: 10px;
+              margin: 20px 0; border: 1px solid rgba(255,255,255,0.2);
+            }
+            .loader { 
+              margin: 20px auto; border: 4px solid rgba(255,255,255,0.3); 
+              border-top: 4px solid #fff; border-radius: 50%; 
+              width: 50px; height: 50px; animation: spin 1s linear infinite; 
+            }
+            .countdown { font-size: 2rem; font-weight: bold; color: #FFD700; margin: 10px 0; }
+            .btn {
+              background: linear-gradient(45deg, #4CAF50, #45a049); color: white;
+              border: none; padding: 15px 30px; border-radius: 10px; cursor: pointer;
+              font-size: 16px; font-weight: 600; margin-top: 20px; text-decoration: none;
+              display: inline-block; transition: all 0.3s ease;
+            }
+            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            @keyframes bounce {
+              0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+              40% { transform: translateY(-10px); } 60% { transform: translateY(-5px); }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="emoji">💳</div>
+            <h2>${isArabic ? 'جاري تحويلك لإكمال الدفع' : 'Redirecting to Payment'}</h2>
+            <div class="order-info">
+              <strong>${isArabic ? 'طلب رقم:' : 'Order:'}</strong> ${orderName}<br>
+              <strong>${isArabic ? 'المبلغ:' : 'Amount:'}</strong> $${totalAmount}
             </div>
-            <script>
-              let timeLeft = 3;
-              const countdownElement = document.getElementById('countdown');
-              const paymentUrl = "${payUrl}";
-              function updateCountdown() {
-                countdownElement.textContent = timeLeft;
-                if (timeLeft <= 0) { redirectNow(); return; }
-                timeLeft--; setTimeout(updateCountdown, 1000);
-              }
-              function redirectNow() { window.location.href = paymentUrl; }
-              updateCountdown();
-              setTimeout(redirectNow, ${REDIRECT_DELAY});
-              document.addEventListener('click', function(e) {
-                if (e.target.tagName !== 'A') redirectNow();
-              });
-              document.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter' || e.key === ' ') redirectNow();
-              });
-            </script>
-          </body>
-          </html>
-        `);
-      }
-
-      res.status(200).json({
-        success: true,
-        message: `تم إنشاء رابط الدفع للطلب ${orderName}`,
-        order_id: orderId,
-        reference_id: referenceId,
-        pay_url: payUrl,
-        pay_url_base: waylResponse.data.url,
-        display_amount: `${totalAmount} ${currency}`,
-        payment_amount: `${totalInIQD} IQD`,
-        display_settings: displaySettings,
-        customer_country: customerCountry,
-        conversion_rate: USD_TO_IQD_RATE,
-        free_items: freeItemsCount,
-        real_store_images: realImagesCount,
-        total_items: lineItems.length,
-      });
-    } catch (waylError) {
-      console.error("❌ خطأ WAYL API:", waylError);
-      res.status(200).json({
-        success: false,
-        message: `تم استقبال الطلب ${orderName} لكن فشل إنشاء رابط الدفع`,
-        error: waylError.message,
-        order_id: orderId,
-      });
+            <div class="loader"></div>
+            <p>${isArabic ? 'سيتم التحويل خلال:' : 'Redirecting in:'} <span class="countdown" id="countdown">2</span> ${isArabic ? 'ثانية' : 'seconds'}</p>
+            <a href="${payUrl}" class="btn" onclick="redirectNow()">${isArabic ? 'اذهب للدفع الآن' : 'Go to Payment'}</a>
+          </div>
+          <script>
+            let timeLeft = 2;
+            const countdownElement = document.getElementById('countdown');
+            const paymentUrl = "${payUrl}";
+            function updateCountdown() {
+              countdownElement.textContent = timeLeft;
+              if (timeLeft <= 0) { redirectNow(); return; }
+              timeLeft--; setTimeout(updateCountdown, 1000);
+            }
+            function redirectNow() { window.location.href = paymentUrl; }
+            updateCountdown();
+            setTimeout(redirectNow, ${REDIRECT_DELAY});
+            document.addEventListener('click', redirectNow);
+            document.addEventListener('keydown', function(e) {
+              if (e.key === 'Enter' || e.key === ' ') redirectNow();
+            });
+          </script>
+        </body>
+        </html>
+      `);
     }
+
+    res.status(200).json({
+      success: true,
+      message: `Payment link created for ${orderName}`,
+      order_id: orderId,
+      reference_id: referenceId,
+      pay_url: payUrl,
+      pay_url_base: waylResponse.data.url,
+      display_amount: `${totalAmount} ${currency}`,
+      payment_amount: `${totalInIQD} IQD`,
+      display_settings: displaySettings,
+      customer_country: customerCountry,
+      conversion_rate: USD_TO_IQD_RATE,
+      free_items: freeItemsCount,
+      total_items: lineItems.length,
+    });
+
   } catch (e) {
-    console.error("❌ خطأ في معالجة الطلب:", e);
+    console.error("❌ Error:", e);
     res.status(500).json({ error: e.message });
   }
 });
@@ -605,7 +531,7 @@ app.get("/orders/:orderId/pay", async (req, res) => {
     const base = order?.payUrlBase?.value || order?.payUrl?.value;
     
     if (!base) {
-      return res.status(404).json({ ok: false, message: "لم يتم العثور على رابط WAYL لهذا الطلب." });
+      return res.status(404).json({ ok: false, message: "Payment link not found" });
     }
 
     const effectiveCountry = order?.savedCountry?.value || country;
@@ -645,10 +571,7 @@ app.get('/redirect-to-payment/:orderId', async (req, res) => {
     const data = await shopifyGraphQL(query, { id: orderGID });
     const payUrl = data?.order?.payUrl?.value;
     
-    if (payUrl) {
-      return res.redirect(payUrl);
-    }
-    
+    if (payUrl) return res.redirect(payUrl);
     res.status(404).send('Payment link not found');
   } catch (e) {
     res.status(500).send('Error: ' + e.message);
@@ -659,12 +582,10 @@ app.get('/pay', async (req, res) => {
     try {
         const query = `
             query GetRecentPendingOrders {
-                orders(first: 5, query: "financial_status:pending", sortKey: CREATED_AT, reverse: true) {
+                orders(first: 3, query: "financial_status:pending", sortKey: CREATED_AT, reverse: true) {
                     edges {
                         node {
                             id name
-                            totalPriceSet { shopMoney { amount currencyCode } }
-                            createdAt
                             payUrl: metafield(namespace: "wayl", key: "pay_url") { value }
                             payUrlBase: metafield(namespace: "wayl", key: "pay_url_base") { value }
                             savedCountry: metafield(namespace: "wayl", key: "customer_country") { value }
@@ -681,21 +602,12 @@ app.get('/pay', async (req, res) => {
         if (orders.length === 0) {
             return res.send(`
                 <!DOCTYPE html>
-                <html><head><meta charset="UTF-8"><title>No Pending Orders</title>
-                <style>
-                    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
-                           text-align: center; padding: 50px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-                           min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-                    .container { background: white; padding: 40px; border-radius: 15px; 
-                                box-shadow: 0 10px 30px rgba(0,0,0,0.1); max-width: 500px; }
-                    .btn { background: #4CAF50; color: white; padding: 12px 24px; text-decoration: none; 
-                          border-radius: 8px; display: inline-block; margin-top: 20px; font-weight: 600; }
-                    .emoji { font-size: 3rem; margin-bottom: 20px; }
-                </style></head>
+                <html><head><meta charset="UTF-8"><title>No Orders</title>
+                <style>body{font-family:sans-serif;text-align:center;padding:50px;background:#f5f7fa;min-height:100vh;display:flex;align-items:center;justify-content:center}.container{background:white;padding:40px;border-radius:15px;box-shadow:0 10px 30px rgba(0,0,0,0.1);max-width:500px}.btn{background:#4CAF50;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;display:inline-block;margin-top:20px;font-weight:600}.emoji{font-size:3rem;margin-bottom:20px}</style></head>
                 <body><div class="container"><div class="emoji">❌</div>
-                <h2>لا توجد طلبات معلقة للدفع</h2>
-                <p>جميع طلباتك مكتملة الدفع أو لا توجد طلبات حديثة تحتاج دفع</p>
-                <a href="https://${SHOPIFY_STORE_DOMAIN}" class="btn">العودة للمتجر</a>
+                <h2>No pending orders</h2>
+                <p>All orders are paid or no recent orders found</p>
+                <a href="https://${SHOPIFY_STORE_DOMAIN}" class="btn">Back to Store</a>
                 </div></body></html>
             `);
         }
@@ -725,42 +637,23 @@ app.get('/pay', async (req, res) => {
         return res.send(`
             <!DOCTYPE html>
             <html><head><meta charset="UTF-8"><title>Payment Link Not Found</title>
-            <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
-                       text-align: center; padding: 50px; background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
-                       min-height: 100vh; display: flex; align-items: center; justify-content: center; color: white; }
-                .container { background: rgba(255,255,255,0.1); padding: 40px; border-radius: 15px; 
-                            backdrop-filter: blur(10px); max-width: 500px; }
-                .btn { background: white; color: #333; padding: 12px 24px; text-decoration: none; 
-                      border-radius: 8px; display: inline-block; margin-top: 20px; font-weight: 600; }
-                .emoji { font-size: 3rem; margin-bottom: 20px; }
-            </style></head>
+            <style>body{font-family:sans-serif;text-align:center;padding:50px;background:#ff6b6b;min-height:100vh;display:flex;align-items:center;justify-content:center;color:white}.container{background:rgba(255,255,255,0.1);padding:40px;border-radius:15px;backdrop-filter:blur(10px);max-width:500px}.btn{background:white;color:#333;padding:12px 24px;text-decoration:none;border-radius:8px;display:inline-block;margin-top:20px;font-weight:600}.emoji{font-size:3rem;margin-bottom:20px}</style></head>
             <body><div class="container"><div class="emoji">⚠️</div>
-            <h2>رابط الدفع غير متوفر</h2>
-            <p>تم العثور على طلب ${latestOrder.name} لكن لم يتم إنشاء رابط دفع له بعد.</p>
-            <p>يرجى المحاولة مرة أخرى بعد قليل أو التواصل مع الدعم.</p>
-            <a href="https://${SHOPIFY_STORE_DOMAIN}" class="btn">العودة للمتجر</a>
+            <h2>Payment link not available</h2>
+            <p>Order ${latestOrder.name} found but payment link not created yet.</p>
+            <a href="https://${SHOPIFY_STORE_DOMAIN}" class="btn">Back to Store</a>
             </div></body></html>
         `);
         
     } catch (error) {
         res.status(500).send(`
             <!DOCTYPE html>
-            <html><head><meta charset="UTF-8"><title>Payment Error</title>
-            <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
-                       text-align: center; padding: 50px; background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
-                       min-height: 100vh; display: flex; align-items: center; justify-content: center; color: white; }
-                .container { background: rgba(255,255,255,0.1); padding: 40px; border-radius: 15px; 
-                            backdrop-filter: blur(10px); max-width: 500px; }
-                .btn { background: white; color: #333; padding: 12px 24px; text-decoration: none; 
-                      border-radius: 8px; display: inline-block; margin-top: 20px; font-weight: 600; }
-                .emoji { font-size: 3rem; margin-bottom: 20px; }
-            </style></head>
+            <html><head><meta charset="UTF-8"><title>Error</title>
+            <style>body{font-family:sans-serif;text-align:center;padding:50px;background:#ff6b6b;min-height:100vh;display:flex;align-items:center;justify-content:center;color:white}.container{background:rgba(255,255,255,0.1);padding:40px;border-radius:15px;backdrop-filter:blur(10px);max-width:500px}.btn{background:white;color:#333;padding:12px 24px;text-decoration:none;border-radius:8px;display:inline-block;margin-top:20px;font-weight:600}.emoji{font-size:3rem;margin-bottom:20px}</style></head>
             <body><div class="container"><div class="emoji">❌</div>
-            <h2>خطأ في معالجة الدفع</h2>
-            <p>نعتذر، حدث خطأ أثناء محاولة الوصول لرابط الدفع</p>
-            <a href="https://${SHOPIFY_STORE_DOMAIN}" class="btn">العودة للمتجر</a>
+            <h2>Payment processing error</h2>
+            <p>Sorry, an error occurred while accessing the payment link</p>
+            <a href="https://${SHOPIFY_STORE_DOMAIN}" class="btn">Back to Store</a>
             </div></body></html>
         `);
     }
@@ -783,55 +676,49 @@ app.post("/webhooks/wayl/payment", async (req, res) => {
   try {
     const { status, referenceId, id: transactionId, completedAt } = req.body || {};
 
-    if (!referenceId) {
-      return res.status(400).send("Missing referenceId");
-    }
+    if (!referenceId) return res.status(400).send("Missing referenceId");
 
     const match = referenceId.match(/SHOPIFY-(\d+)-/);
-    if (!match) {
-      return res.status(400).send("Invalid referenceId format");
-    }
+    if (!match) return res.status(400).send("Invalid referenceId format");
 
     const orderId = match[1];
     const orderGID = `gid://shopify/Order/${orderId}`;
 
     if (status === "Completed") {
-      const markPaidMutation = `
-        mutation orderMarkAsPaid($input: OrderMarkAsPaidInput!) {
-          orderMarkAsPaid(input: $input) {
-            order { id displayFinancialStatus displayFulfillmentStatus }
-            userErrors { field message }
+      await Promise.all([
+        shopifyGraphQL(`
+          mutation orderMarkAsPaid($input: OrderMarkAsPaidInput!) {
+            orderMarkAsPaid(input: $input) {
+              order { id displayFinancialStatus }
+              userErrors { field message }
+            }
           }
-        }
-      `;
-      await shopifyGraphQL(markPaidMutation, { input: { id: orderGID } });
-
-      const updateMetafieldsMutation = `
-        mutation SetPaymentMetafields($metafields: [MetafieldsSetInput!]!) {
-          metafieldsSet(metafields: $metafields) {
-            metafields { key value }
-            userErrors { field message }
+        `, { input: { id: orderGID } }),
+        
+        shopifyGraphQL(`
+          mutation SetPaymentMetafields($metafields: [MetafieldsSetInput!]!) {
+            metafieldsSet(metafields: $metafields) {
+              metafields { key value }
+              userErrors { field message }
+            }
           }
-        }
-      `;
-      const completionMetafields = [
-        { ownerId: orderGID, namespace: "wayl", key: "payment_status", type: "single_line_text_field", value: "completed" },
-        { ownerId: orderGID, namespace: "wayl", key: "transaction_id", type: "single_line_text_field", value: transactionId || "" },
-        { ownerId: orderGID, namespace: "wayl", key: "completed_at", type: "single_line_text_field", value: completedAt || new Date().toISOString() },
-      ];
-      await shopifyGraphQL(updateMetafieldsMutation, { metafields: completionMetafields });
-
-      const addTagMutation = `
-        mutation tagsAdd($id: ID!, $tags: [String!]!) {
-          tagsAdd(id: $id, tags: $tags) {
-            node { id }
-            userErrors { field message }
+        `, { 
+          metafields: [
+            { ownerId: orderGID, namespace: "wayl", key: "payment_status", type: "single_line_text_field", value: "completed" },
+            { ownerId: orderGID, namespace: "wayl", key: "transaction_id", type: "single_line_text_field", value: transactionId || "" },
+            { ownerId: orderGID, namespace: "wayl", key: "completed_at", type: "single_line_text_field", value: completedAt || new Date().toISOString() },
+          ]
+        }),
+        
+        shopifyGraphQL(`
+          mutation tagsAdd($id: ID!, $tags: [String!]!) {
+            tagsAdd(id: $id, tags: $tags) {
+              node { id }
+              userErrors { field message }
+            }
           }
-        }
-      `;
-      const tags = ["WAYL-PAID", transactionId ? `WAYL-TX-${transactionId}` : "WAYL-TX-UNKNOWN", "WAYL-USD-DISPLAY"];
-      await shopifyGraphQL(addTagMutation, { id: orderGID, tags });
-      console.log(`✅ Order ${orderId} marked as paid via WAYL`);
+        `, { id: orderGID, tags: ["WAYL-PAID", transactionId ? `WAYL-TX-${transactionId}` : "WAYL-TX-UNKNOWN", "WAYL-USD-DISPLAY"] })
+      ]);
     }
 
     res.status(200).json({ success: true });
@@ -843,7 +730,7 @@ app.post("/webhooks/wayl/payment", async (req, res) => {
 // ==================== START ====================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 سيرفر WAYL-Shopify يعمل على المنفذ ${PORT}`);
+  console.log(`🚀 WAYL-Shopify Server running on port ${PORT}`);
   console.log(`🔗 BASE_URL: ${BASE_URL}`);
   console.log(`🛍️ Shopify: ${SHOPIFY_STORE_DOMAIN}`);
   console.log(`💳 WAYL API: ${WAYL_API_BASE}`);
@@ -852,11 +739,10 @@ app.listen(PORT, () => {
   console.log(`⏱️ REDIRECT_DELAY: ${REDIRECT_DELAY}ms`);
   console.log(`💰 Payment Route: ${BASE_URL}/pay`);
   console.log(`🎯 Smart Payment Route: ${BASE_URL}/payment?order_id=ORDER_ID`);
-  console.log(`🌍 Arabic Countries Supported: 22`);
+  console.log(`🌍 Arabic Countries: 22 supported`);
   console.log(`🗣️ Languages: Arabic (ar) + English (en)`);
   console.log(`💵 Display Currency: USD for all countries`);
   console.log(`💰 Payment Currency: IQD (Iraqi Dinar)`);
-  console.log(`🖼️ Product Images: Real images from tryhydrocat.com + Unsplash fallback`);
-  console.log(`🏪 Store Images Available: ${Object.keys(REAL_PRODUCT_IMAGES).length} products mapped`);
-  console.log(`🎁 Free Items: Smart detection - only price=0 items are free`);
+  console.log(`🖼️ Real Store Images: ${Object.keys(REAL_PRODUCT_IMAGES).length} products`);
+  console.log(`🎁 FREE Items: Title-based detection - ANY item with FREE in title = free`);
 });
